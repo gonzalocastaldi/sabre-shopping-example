@@ -15,6 +15,11 @@ const queryClient = new QueryClient({
 async function start() {
   // En modo mock, MSW intercepta /api/sabre/* en el browser. En live, lo atiende el proxy de Vite.
   if (getSettings().apiMode === 'mock') {
+    // MSW llama a registration.update() sin manejar la promesa; si se navega mientras se
+    // actualiza, el browser la rechaza ("Not found"). No afecta al mock: lo silenciamos.
+    window.addEventListener('unhandledrejection', (e) => {
+      if (String(e.reason?.message ?? e.reason).includes('mockServiceWorker')) e.preventDefault();
+    });
     const { worker } = await import('./mocks/browser');
     await worker.start({ onUnhandledRequest: 'bypass', quiet: true });
   }
