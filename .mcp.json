@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sabre-developer-hub": {
+      "type": "http",
+      "url": "https://developer.mcp.sabre.com/mcp"
+    }
+  }
+}
