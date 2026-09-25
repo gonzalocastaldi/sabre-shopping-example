@@ -1,0 +1,316 @@
+/**
+ * Destino: calendario de tarifas (Flight Search "Per Day" con ofertas completas), franja de
+ * 12 meses (Flight Search "Per Month", solo precio) y validación en lote con Flight Refresh.
+ * Desde acá se pasa a Flight Shop (vuelos en vivo) o directo a Flight Check (tarifa de caché).
+ */
+import { Link, useNavigate } from '@tanstack/react-router';
+import { addMonths, format, startOfMonth } from 'date-fns';
+import { useEffect, useMemo, useState } from 'react';
+import { describeError } from '@/api/client';
+import { useCalendarSearch, useFlightRefresh, useMonthOverview, type RefreshResult } from '@/api/hooks';
+import { plusDays, today, SEARCH_WINDOW_DAYS } from '@/api/mappers';
+import type { CalendarDay } from '@/api/normalize';
+import { saveSelectedOffer } from '@/app/offerStore';
+import { destinationRoute } from '@/app/router';
+import { travelersFromSearch, travelersToSearch } from '@/app/urlState';
+import { countryName, getPlace, placeLabel } from '@/data/geo';
+import { ApiSourceTag } from '@/features/devtools/ApiSourceTag';
+import { LegLine, RouteTitle, TravelersPicker, ValidationBadge, validationDetail } from '@/features/shared/travel';
+import { IconChevronLeft, IconChevronRight, IconShield } from '@/ui/icons';
+import { Button, IconButton, Notice, Price, ToggleChip, cx, formatDate, formatDateLong, formatMoney } from '@/ui/primitives';
+import { CalendarLegend, FareCalendar } from './FareCalendar';
+
+const STAYS = [2, 3, 5, 7, 10, 14, 21];
+const MONTH_SHORT = new Intl.DateTimeFormat('es', { month: 'short' });
+
+function useIsWide() {
+  const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const on = () => setWide(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return wide;
+}
+
+export function DestinationPage() {
+  const { code } = destinationRoute.useParams();
+  const search = destinationRoute.useSearch();
+  const navigate = useNavigate({ from: destinationRoute.fullPath });
+  const origin = search.o ?? 'BUE';
+  const oneWay = search.los === 'ow';
+  const lengthOfStay = oneWay ? undefined : Number(search.los ?? 7);
+  const travelers = travelersFromSearch(search.pax);
+  const nonStop = search.ns === '1';
+  const wide = useIsWide();
+  const monthsShown = wide ? 2 : 1;
+
+  const minDate = plusDays(today(), 1);
+  const maxDate = plusDays(today(), SEARCH_WINDOW_DAYS);
+  // Mes inicial: el de la fecha elegida o, si el mes actual casi terminó, el siguiente.
+  const startAnchor = search.sel ?? search.from ?? (Number(minDate.slice(8)) > 20 ? plusDays(minDate, 12) : minDate);
+  const firstMonth = search.m ?? format(startOfMonth(new Date(`${startAnchor}T12:00:00`)), 'yyyy-MM-dd');
+  const windowFrom = firstMonth < minDate ? minDate : firstMonth;
+  const windowTo = (() => {
+    const end = format(addMonths(new Date(`${firstMonth}T12:00:00`), monthsShown), 'yyyy-MM-dd');
+    const last = plusDays(end, -1);
+    return last > maxDate ? maxDate : last;
+  })();
+
+  const calendar = useCalendarSearch({ origin, destination: code, fromDate: windowFrom, toDate: windowTo, lengthOfStay, nonStop });
+  const overview = useMonthOverview({ origin, destination: code, lengthOfStay, nonStop });
+  const refresh = useFlightRefresh();
+
+  const days = useMemo(() => calendar.data?.days ?? new Map<string, CalendarDay>(), [calendar.data]);
+  const selectedDate = search.sel && days.has(search.sel) ? search.sel : undefined;
+  const selected = selectedDate ? days.get(selectedDate) : undefined;
+  const offer = selected?.cheapest;
+
+  const [refreshByOffer, setRefreshByOffer] = useState<Map<string, RefreshResult>>(new Map());
+  const validations = useMemo(() => {
+    const map = new Map<string, RefreshResult>();
+    for (const [date, day] of days) {
+      const r = refreshByOffer.get(day.cheapest.id);
+      if (r) map.set(date, r);
+    }
+    return map;
+  }, [days, refreshByOffer]);
+
+  const set = (patch: Record<string, string | undefined>, replace = true) => navigate({ search: (prev) => ({ ...prev, ...patch }), replace });
+
+  const validateCheapest = () => {
+    const cheapest = [...days.values()].sort((a, b) => a.cheapest.price!.amount - b.cheapest.price!.amount).slice(0, 10).map((d) => d.cheapest);
+    refresh.mutate(
+      { offers: cheapest, travelers },
+      { onSuccess: (results) => setRefreshByOffer((prev) => new Map([...prev, ...results])) },
+    );
+  };
+
+  const refreshSummary = useMemo(() => {
+    const list = [...validations.values()];
+    if (!list.length) return undefined;
+    const ok = list.filter((r) => r.isItineraryValid && r.bookingClassCodeValidation === 'Matched').length;
+    return { ok, total: list.length };
+  }, [validations]);
+
+  const dest = getPlace(code);
+  const months = Array.from({ length: 11 }, (_, i) => format(addMonths(startOfMonth(new Date()), i), 'yyyy-MM'));
+  const monthPrices = months.map((m) => overview.data?.get(m)?.price?.amount).filter((n): n is number => n !== undefined);
+  const monthMax = Math.max(...monthPrices, 1);
+  const monthMin = Math.min(...monthPrices);
+  const calError = calendar.error ? describeError(calendar.error) : undefined;
+  const returnDate = offer?.legs[1]?.departDate ?? (selectedDate && lengthOfStay !== undefined ? plusDays(selectedDate, lengthOfStay) : undefined);
+
+  const shopSearch = {
+    o: origin,
+    d: code,
+    dep: selectedDate,
+    ret: oneWay ? undefined : returnDate,
+    pax: travelersToSearch(travelers),
+    ns: nonStop ? '1' : undefined,
+  };
+
+  return (
+    <div className="mx-auto w-full max-w-[1440px] px-4 py-5 sm:px-6">
+      <nav aria-label="Migas" className="text-sm text-ink-soft">
+        <Link to="/" search={{ o: origin }} className="hover:text-ink hover:underline">
+          Explorar desde {placeLabel(origin)}
+        </Link>
+      </nav>
+      <div className="mt-2 flex flex-wrap items-end gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-[36px] sm:text-[44px]">
+            <RouteTitle from={origin} to={code} roundTrip={!oneWay} />
+          </h1>
+          <p className="text-ink-soft">
+            {dest ? `${dest.kind === 'city' ? 'Todos los aeropuertos' : dest.name}, ${countryName(dest.country)}` : code}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <TravelersPicker value={travelers} onChange={(t) => set({ pax: travelersToSearch(t) })} />
+        </div>
+      </div>
+
+      <fieldset className="mt-5">
+        <legend className="mb-2 text-2xs font-medium text-ink-soft">Noches de estadía (lengthsOfStay)</legend>
+        <div className="flex flex-wrap gap-1.5">
+          {STAYS.map((n) => (
+            <ToggleChip key={n} pressed={lengthOfStay === n} onToggle={() => set({ los: String(n), sel: undefined })}>
+              {n} noches
+            </ToggleChip>
+          ))}
+          <ToggleChip pressed={oneWay} onToggle={() => set({ los: 'ow', sel: undefined })}>
+            Solo ida
+          </ToggleChip>
+          <ToggleChip pressed={nonStop} onToggle={() => set({ ns: nonStop ? undefined : '1' })}>
+            Incluir tarifa directa
+          </ToggleChip>
+        </div>
+      </fieldset>
+
+      {/* Franja anual: Per Month */}
+      <section aria-labelledby="year-title" className="mt-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <div>
+            <h2 id="year-title" className="text-xl">
+              El precio más bajo de cada mes
+            </h2>
+            <p className="text-sm text-ink-soft">El mes más barato está en magenta.</p>
+          </div>
+          <ApiSourceTag api="flightSearch" className="-ml-1.5 sm:ml-0">
+            Per Month, solo precio, de
+          </ApiSourceTag>
+        </div>
+        <ul className="mt-2 grid grid-cols-11 items-end gap-1 sm:gap-2">
+          {months.map((m) => {
+            const o = overview.data?.get(m);
+            const amount = o?.price?.amount;
+            const height = amount ? 16 + ((amount - monthMin) / Math.max(1, monthMax - monthMin)) * 56 : 8;
+            const active = firstMonth.slice(0, 7) === m;
+            return (
+              <li key={m}>
+                <button
+                  type="button"
+                  aria-pressed={active}
+                  aria-label={`${new Intl.DateTimeFormat('es', { month: 'long', year: 'numeric' }).format(new Date(`${m}-15T12:00:00`))}${amount ? `: desde ${formatMoney(amount, o!.price!.currency)}` : ': sin tarifa'}`}
+                  onClick={() => set({ m: `${m}-01` })}
+                  className="group flex w-full flex-col items-center gap-1"
+                >
+                  <span className="hidden font-display text-[13px] font-semibold tabular sm:block">{amount ? formatMoney(amount, o!.price!.currency, { compact: true }) : '—'}</span>
+                  <span
+                    className={cx('w-full rounded-t-md transition-colors', amount === monthMin ? 'bg-magenta' : active ? 'bg-ink' : 'bg-cyan/50 group-hover:bg-cyan')}
+                    style={{ height: overview.isLoading ? 20 : height }}
+                    aria-hidden="true"
+                  />
+                  <span className={cx('text-2xs capitalize', active ? 'font-medium text-ink' : 'text-ink-soft')}>{MONTH_SHORT.format(new Date(`${m}-15T12:00:00`)).replace('.', '')}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+
+      <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_380px]">
+        <section aria-labelledby="cal-title">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <div>
+              <h2 id="cal-title" className="text-xl">
+                Tarifa más baja por día de salida
+              </h2>
+              <p className="text-sm text-ink-soft">
+                Por adulto, en {[...days.values()][0]?.cheapest.price?.currency ?? 'USD'}
+                {oneWay ? ', solo ida' : `, ida y vuelta con ${lengthOfStay} noches`}.
+              </p>
+            </div>
+            <span className="flex-1" />
+            <IconButton label="Mes anterior" disabled={firstMonth <= format(startOfMonth(new Date()), 'yyyy-MM-dd')} onClick={() => set({ m: format(addMonths(new Date(`${firstMonth}T12:00:00`), -1), 'yyyy-MM-dd') })} className="disabled:opacity-30">
+              <IconChevronLeft />
+            </IconButton>
+            <IconButton label="Mes siguiente" disabled={windowTo >= maxDate} onClick={() => set({ m: format(addMonths(new Date(`${firstMonth}T12:00:00`), 1), 'yyyy-MM-dd') })} className="disabled:opacity-30">
+              <IconChevronRight />
+            </IconButton>
+          </div>
+          {calError && (
+            <Notice tone="error" title={calError.title}>
+              {calError.detail}
+            </Notice>
+          )}
+          <FareCalendar
+            firstMonth={firstMonth}
+            monthsShown={monthsShown}
+            days={days}
+            selected={selectedDate}
+            onSelect={(date) => set({ sel: date }, false)}
+            onNavigate={(m) => set({ m })}
+            validations={validations}
+            minDate={minDate}
+            maxDate={maxDate}
+            loading={calendar.isFetching}
+          />
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <CalendarLegend />
+            <ApiSourceTag api="flightSearch">Per Day, ofertas completas, de</ApiSourceTag>
+          </div>
+          <div className="mt-5 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-land p-4">
+            <IconShield className="shrink-0 text-cyan" />
+            <div className="min-w-[14rem] flex-1">
+              <p className="font-medium">¿Siguen disponibles estas tarifas?</p>
+              <p className="text-sm text-ink-soft">
+                {refreshSummary
+                  ? `${refreshSummary.ok} de ${refreshSummary.total} fechas confirmadas en la clase cotizada.`
+                  : 'Flight Refresh valida en un solo request las 10 fechas más baratas contra el inventario.'}
+              </p>
+            </div>
+            <Button variant="secondary" onClick={validateCheapest} loading={refresh.isPending} loadingText="Validando…" disabled={!days.size}>
+              Validar disponibilidad
+            </Button>
+            {refresh.isError && <p className="w-full text-sm text-danger">{describeError(refresh.error).detail}</p>}
+          </div>
+        </section>
+
+        <aside aria-labelledby="sel-title" className="lg:sticky lg:top-20 lg:self-start">
+          <div className="rounded-2xl border border-line bg-land p-5">
+            {!offer ? (
+              <>
+                <h2 id="sel-title" className="text-2xl">
+                  Elegí una fecha
+                </h2>
+                <p className="mt-1 text-ink-soft">
+                  Tocá un día del calendario para ver el vuelo en caché y seguir con el precio en vivo.
+                  {days.size ? ` El más barato del período sale ${formatMoney(Math.min(...[...days.values()].map((d) => d.cheapest.price!.amount)), [...days.values()][0].cheapest.price!.currency)}.` : ''}
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 id="sel-title" className="text-2xl first-letter:uppercase">
+                  {formatDateLong(selectedDate!)}
+                </h2>
+                <p className="text-ink-soft">{returnDate && !oneWay ? `Vuelta el ${formatDate(returnDate)}, ${lengthOfStay} noches` : 'Solo ida'}</p>
+                <div className="mt-4 flex items-end justify-between gap-3">
+                  <div>
+                    <Price amount={offer.price!.amount} currency={offer.price!.currency} className="text-[40px] leading-none" />
+                    <p className="text-2xs text-ink-soft">por adulto, en caché</p>
+                  </div>
+                  {validations.get(selectedDate!) && (
+                    <ValidationBadge value={validations.get(selectedDate!)!.bookingClassCodeValidation} valid={validations.get(selectedDate!)!.isItineraryValid} />
+                  )}
+                </div>
+                {validations.get(selectedDate!) && <p className="mt-1 text-sm text-ink-soft">{validationDetail(validations.get(selectedDate!)!.bookingClassCodeValidation)}</p>}
+                <div className="mt-4 space-y-4 border-t border-line pt-4">
+                  {offer.legs.map((leg, i) => (
+                    <LegLine key={leg.journeyId} leg={leg} label={i === 0 ? 'Ida' : 'Vuelta'} />
+                  ))}
+                  {offer.priceOnly && <p className="text-sm text-ink-soft">Esta tarifa vino sin detalle de vuelos.</p>}
+                </div>
+                <div className="mt-5 grid gap-2">
+                  <Link
+                    to="/vuelos"
+                    search={shopSearch}
+                    className="inline-flex h-12 items-center justify-center rounded-lg bg-magenta px-5 text-[17px] font-medium text-white hover:bg-magenta-strong"
+                  >
+                    Ver vuelos en vivo
+                  </Link>
+                  <Button
+                    variant="secondary"
+                    size="lg"
+                    disabled={offer.priceOnly}
+                    onClick={() => {
+                      saveSelectedOffer({ offer, source: 'flightSearch', travelers });
+                      void navigate({ to: '/revision/$offerId', params: { offerId: offer.id }, search: { pax: travelersToSearch(travelers) } });
+                    }}
+                  >
+                    Revisar esta tarifa
+                  </Button>
+                  <p className="text-2xs text-ink-soft">
+                    "Ver vuelos en vivo" consulta Flight Shop para esas fechas. "Revisar esta tarifa" recrea la oferta de caché con Flight Check.
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
