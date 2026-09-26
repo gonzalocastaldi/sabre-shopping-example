@@ -1,0 +1,1315 @@
+# Source: Sabre Developer Hub MCP · get_spec_file("rest-api/flightsearch-api/v1")
+# https://developer.sabre.com/rest-api/flightsearch-api/v1
+openapi: 3.0.3
+info:
+  title: Sabre Flight Search API
+  description: >
+    The Sabre Flight Search API is a dynamic API designed to power inspirational shopping by retrieving the lowest fares across a wide range of destinations and flexible dates.
+  version: "1.0"
+x-lingo-api-type: rpc
+servers:
+  - url: https://{environment}.sabre.com{basePath}
+    variables:
+      environment:
+        default: 'api.cert.platform'
+        enum:
+          - 'api.cert.platform' # Public Certification Server
+          - 'api.platform' # Public Production Server
+      basePath:
+        default: /v1/offers
+security:
+  - oauth2_authentication: [ ]
+tags:
+  - name: flightsearch
+    description: Sabre Flight Search API.
+paths:
+  /flightSearch:
+    post:
+      tags:
+        - flightsearch
+      summary: Returns list of Flight Offers from multiple sources.
+      description: Creates a comprehensive flight search across multiple sources for flexible origins, destinations, or dates, utilizing data from both the Sabre Cache and the Offer repository.
+      operationId: flightsearch
+      requestBody:
+        description: Search for flight offers using preferred criteria for open dates or destinations. The API allow's to search from airport or city to anywhere (empty, airport, city, country, region, theme), anytime (with default ranges).
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlightSearchRequest'
+            examples:
+              openOriginRequest:
+                $ref: '#/components/examples/OpenOriginRequest'
+              openOriginRequest2:
+                $ref: '#/components/examples/OpenOriginRequest2'
+              openDestinationRequest:
+                $ref: '#/components/examples/OpenDestinationRequest'
+              openDestinationWithMapModeRequest:
+                $ref: '#/components/examples/OpenDestinationWithMapModeRequest'
+              flightsToAnywhere:
+                $ref: '#/components/examples/FlightsToAnywhere'
+        required: true
+      responses:
+        '200':
+          description: Successful response unless `errors` element is returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightSearchResponse'
+
+components:
+  securitySchemes:
+    oauth2_authentication:
+      type: oauth2
+      x-base64-encode-client-credentials: true
+      flows:
+        clientCredentials:
+          tokenUrl: 'https://api.cert.platform.sabre.com/v2/auth/token'
+          scopes: {}
+  schemas:
+    FlightSearchRequest:
+      type: object
+      required:
+        - departureLocation
+      properties:
+        departureLocation:
+          $ref: '#/components/schemas/Location'
+          description: When set to country, or one of list types, indicates open origin type of request. When set to Airport/City indicates open destination type of request. Other location types aren't allowed.
+        arrivalLocations:
+          $ref: '#/components/schemas/ArrivalLocationFilters'
+          description: When omitted, indicates 'to anywhere'. Must be set to either Airport or City in open origin type of request. All location types allowed in open destination type of request.
+        departureDateRange:
+          $ref: '#/components/schemas/DepartureDateRange'
+          description: Contains the range of departure dates for the outbound flight, including the earliest (fromDate) and latest (toDate) allowed dates, both in YYYY-MM-DD format and based on the origin airport's local time zone.
+        lengthsOfStay:
+          $ref: '#/components/schemas/LengthsOfStay'
+          description: Defines the number of days that passes between outbound and inbound flights in a round-trip journey. Order of items may be relevant for some diversity algorithms.
+        processingOptions:
+          $ref: '#/components/schemas/ProcessingOptions'
+          description: Defines additional search modifiers and filters.
+        sources:
+          $ref: '#/components/schemas/SourcesFilter'
+          description: List of providers and distribution models to be filtered from final
+            response.
+        configuration:
+          $ref: '#/components/schemas/Configuration'
+          description: Defines additional customer-related information that influences processing.
+
+    Budget:
+      type: object
+      description: Contains budget information to filter by in the final response.
+      required:
+        - maximumTotalFareAmount
+        - currencyCode
+      properties:
+        maximumTotalFareAmount:
+          type: number
+          format: int32
+          minimum: 1
+          description: The threshold above which offers are excluded. Excludes any offer above this total fare.
+          example: 500.00
+        currencyCode:
+          description: The three-letter ISO-4217 currency code associated with amounts.
+          $ref: '#/components/schemas/CurrencyCode'
+
+    ProcessingOptions:
+      type: object
+      description: Contains processing options that enable special features of offer generation.
+      properties:
+        publicContentPointOfSaleCountry:
+          $ref: '#/components/schemas/CountryCode'
+          description: When set, triggers public cache content created by Sabre PCCs as addition to private content eligible for the requesting PCC. Depending on the country chosen offers may be different and may be presented in different currency.
+        returnLowestNonStopFare:
+          type: boolean
+          description: If `true`, allows the system to support two price points—based on a specific date, origin (city), and destination, one for 'LowestFare' and one for 'LowestNonStopFare'.
+          default: false
+        returnMode:
+          $ref: '#/components/schemas/ReturnModeEnum'
+          description: Defines grouping of results by time ranges. Support 3 Modes lowest per date range month (map mode), lowest per every single day, and lowest per date range.
+        returnFullOffers:
+          type: boolean
+          default: false
+          description: If `true`, returns full offer details instead of only the total price.
+        returnOffersPerLengthOfStay:
+          type: boolean
+          default: true
+          description: If `true`, returns separate offers for each requested length of stay. If false, it selects only the cheapest offer across all lengths of stay.
+        returnVirtualInterlines:
+          type: boolean
+          default: false
+          description: If `true`, returns one virtual interline solution in addition to the full journey solutions.
+        budget:
+          $ref: '#/components/schemas/Budget'
+          description: The Price range where returned offers must fall into.
+
+    LengthsOfStay:
+      description: Lists the trip duration in days. When provided, the API treats the request as a round-trip. The return date is calculated based on the final day of the stay. If a departure date is not specified, the itinerary defaults to a sequence of consecutive days starting from the current date.
+      type: array
+      minItems: 1
+      maxItems: 21
+      uniqueItems: true
+      example: [ 1,3,5 ]
+      items:
+        type: integer
+        format: int32
+        minimum: 0
+        maximum: 21
+        example: 1
+
+    DepartureDateRange:
+      description: Contains the departure flight date in the origin airport's time zone. If omitted, the system defaults to a search range between 'today' and 330 days from 'today', with both boundaries calculated in UTC.
+
+      type: object
+      required:
+        - fromDate
+      properties:
+        fromDate:
+          $ref: '#/components/schemas/LocalDate'
+          description: Contains the scheduled departure date in `YYYY-MM-DD` format, based on the airport's local time zone.
+        toDate:
+          $ref: '#/components/schemas/LocalDate'
+          description: Contains the scheduled departure date in `YYYY-MM-DD` format. If not provided, assume maximum supported (330 days from "now").
+
+    ArrivalLocationFilters:
+      description: Defines a location together with an information if it's to be included or excluded from the result set.
+      type: array
+      minItems: 1
+      maxItems: 4
+      items:
+        $ref: '#/components/schemas/LocationFilter'
+        description: Lists a location together with an indicator specifying whether it should be included or excluded.
+
+    LocationFilter:
+      description: Contains a location definition paired with an information indicating whether it should be included in or excluded from the results.
+      type: object
+      required:
+        - locationFilter
+        - location
+      properties:
+        locationFilter:
+          description: "Allow capability to include or exclude locations from the result set. Possible values: Exclude or Limit To."
+          $ref: '#/components/schemas/FilterTypeEnum'
+        location:
+          description: Defines location to be filtered.
+          $ref: '#/components/schemas/Location'
+
+    Location:
+      type: object
+      required:
+        - locationType
+      properties:
+        locationType:
+          $ref: '#/components/schemas/LocationTypeEnum'
+          description: Contains the specific category or type of location.
+      discriminator:
+        propertyName: locationType
+        mapping:
+          Airport: '#/components/schemas/Airport'
+          AirportList: '#/components/schemas/AirportList'
+          City: '#/components/schemas/City'
+          CityList: '#/components/schemas/CityList'
+          Country: '#/components/schemas/Country'
+          CountryList: '#/components/schemas/CountryList'
+          Region: '#/components/schemas/Region'
+          Theme: '#/components/schemas/Theme'
+
+
+    LocationTypeEnum:
+      type: string
+      description: The location type.
+      enum:
+        - 'Airport'
+        - 'AirportList'
+        - 'City'
+        - 'CityList'
+        - 'Country'
+        - 'CountryList'
+        - 'Region'
+        - 'Theme'
+      example: 'Airport'
+
+    CountryList:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/Location'
+        - type: object
+          required:
+            - locationCodes
+          properties:
+            locationCodes:
+              type: array
+              minItems: 1
+              maxItems: 10
+              uniqueItems: true
+              description: Lists the countries included.
+              items:
+                $ref: '#/components/schemas/CountryCode'
+
+    Country:
+      type: object
+      description: Contains country and location information to filter by in the final response.
+      allOf:
+        - $ref: '#/components/schemas/Location'
+        - type: object
+          required:
+            - locationCode
+          properties:
+            locationCode:
+              $ref: '#/components/schemas/CountryCode'
+              description: Defined 'Country' code location type.
+
+    AirportList:
+      type: object
+      description: Contains airport list and location information to filter by in the final response.
+      allOf:
+        - $ref: '#/components/schemas/Location'
+        - type: object
+          required:
+            - locationCodes
+          properties:
+            locationCodes:
+              type: array
+              minItems: 1
+              maxItems: 10
+              uniqueItems: true
+              description: Lists the airport codes included.
+              items:
+                $ref: '#/components/schemas/AirportCode'
+
+    Airport:
+      type: object
+      description: Contains airport and location information to filter by in the final response.
+      allOf:
+        - $ref: '#/components/schemas/Location'
+        - type: object
+          required:
+            - locationCode
+          properties:
+            locationCode:
+              $ref: '#/components/schemas/AirportCode'
+              description: Defined 'Airport' code location type.
+
+    CityList:
+      type: object
+      description: Contains City list and location information to filter by in the final response.
+      allOf:
+        - $ref: '#/components/schemas/Location'
+        - type: object
+          required:
+            - locationCodes
+          properties:
+            locationCodes:
+              type: array
+              minItems: 1
+              maxItems: 10
+              uniqueItems: true
+              description: Lists the city codes included.
+              items:
+                $ref: '#/components/schemas/CityCode'
+
+    City:
+      type: object
+      description: Contains city and location information to filter by in the final response.
+      allOf:
+        - $ref: '#/components/schemas/Location'
+        - type: object
+      required:
+        - locationCode
+      properties:
+        locationCode:
+          $ref: '#/components/schemas/CityCode'
+          description: The code of the city area.
+
+    Region:
+      type: object
+      description: Contains region and location information to filter by in the final response.
+      allOf:
+        - $ref: '#/components/schemas/Location'
+        - type: object
+      required:
+        - locationCode
+      properties:
+        locationCode:
+          $ref: '#/components/schemas/RegionEnum'
+          description: The code of the region area.
+
+    Theme:
+      type: object
+      description: Contains theme and location information to filter by in the final response.
+      allOf:
+        - $ref: '#/components/schemas/Location'
+        - type: object
+      required:
+        - locationCode
+      properties:
+        locationCode:
+          $ref: '#/components/schemas/ThemeEnum'
+          description: Definition of pre defined "Theme" types.
+
+    RegionEnum:
+      type: string
+      enum:
+        [
+          "0-North America",
+          "2-Canada",
+          "9-Mexico",
+          "120-Greenland and Saint Pierre and Miquelon",
+          "140-Caribbean area",
+          "160-Central America",
+          "170-South America",
+          "171-South America and South Atlantic",
+          "172-Bolivarian countries",
+          "210-Europe",
+          "211-Iberian Peninsula",
+          "212-Scandinavia",
+          "220-Middle East",
+          "230-Africa",
+          "231-West Africa",
+          "232-Southern Africa",
+          "233-East Africa",
+          "310-Japan and Koreas",
+          "320-Southeast Asia",
+          "330-Southeast Asian subcontinent",
+          "340-Southwest Pacific",
+          "350-US Pacific trust territories",
+          "360-Russian Federation East of Urals",
+          "370-Micronesia"
+        ]
+      description: Identifies lists of Zone Codes, according to the ATPCO automated rules and footnotes subscription service, APPENDIX C.
+
+    ThemeEnum:
+      type: string
+      enum:
+        - Beach
+        - Caribbean
+        - Disney
+        - Gambling
+        - Historic
+        - Mountains
+        - National Parks
+        - Outdoors
+        - Romantic
+        - Shopping
+        - Skiing
+        - Theme Park
+      description: Identifies theme definitions. Each item resolves to a list of airport codes mapped to a given theme.
+
+    ReturnModeEnum:
+      type: string
+      enum:
+        - Per Day
+        - Per Month
+        - Per Date Range
+      default: "Per Day"
+      description: >
+        ReturnModes:
+        * 'Per Day' - Returns the cheapest offer (one option), per origin-destination, for each day, in a given search date range.
+        * 'Per Month' - Return the cheapest offer (one option), per origin-destination, per month, in the given search date range.
+        * 'Per Date Range' - Return the cheapest (one option) offer, per origin-destination, for the whole length of stay (in the given search date range). It's one offer for OneWays, but multiple offers for Round Trips.
+
+    Configuration:
+      type: object
+      properties:
+        customerCode:
+          $ref: '#/components/schemas/PseudoCityCode'
+          description: Contains the Pseudo City Code (PCC), which triggers processing to return options applicable to the specified PCC. If omitted, options for all PCCs are returned. If provided, it acts as a filter.
+
+    FlightSearchResponse:
+      type: object
+      required:
+        - timestamp
+      properties:
+        timestamp:
+          $ref: '#/components/schemas/DateTimeWithZone'
+          description: Contains the server timestamp.
+        flights:
+          type: array
+          items:
+            $ref: '#/components/schemas/Flight'
+          description: Lists the flights.
+        journeys:
+          type: array
+          items:
+            $ref: '#/components/schemas/Journey'
+          description: Lists the journeys.
+          minItems: 1
+        offers:
+          type: array
+          items:
+            $ref: '#/components/schemas/BaseOffer'
+          description: Lists the offers.
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/Error'
+          description: Lists detailed error information. For a successful response, this
+            element won't exist in the response.
+
+
+    ######### commons start ###############
+
+    FilterTypeEnum:
+      type: string
+      description: The filter type definition, which specifies whether to limit the search to provided values or exclude them from the results.
+      enum:
+        - 'Exclude'
+        - 'Limit To'
+      default: 'Limit To'
+
+    ProviderTypeEnum:
+      type: string
+      description: The data source provider (e.g., Sabre) from which the requested offers are retrieved.
+      enum:
+        - 'Sabre'
+        - 'Direct'
+        - 'Third Party'
+      example: 'Sabre'
+
+    DistributionModelTypeEnum:
+      type: string
+      description: The distribution model or the specific systems and companies hosting carrier APIs from which offers are retrieved.
+      enum:
+        - 'ATPCO'
+        - 'API'
+        - 'NDC'
+      example: 'ATPCO'
+
+    SourcesFilter:
+      type: object
+      description: Contains providers and distribution models to filter from or to include in the final response.
+      oneOf:
+        - type: object
+          properties:
+            providers:
+              type: array
+              description: Lists the sources restricted to the specified providers.
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/ProviderTypeEnum'
+            distributionModels:
+              type: array
+              description: Lists the sources restricted to the specified distribution models.
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/DistributionModelTypeEnum'
+        - type: object
+          additionalProperties: false
+          properties:
+            excludeProviders:
+              type: array
+              description: Lists the excluded providers.
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/ProviderTypeEnum'
+            excludeDistributionModels:
+              type: array
+              description: Lists the excluded distribution models.
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/DistributionModelTypeEnum'
+
+    Amount:
+      type: string
+      description: The monetary amount of fares, taxes, fees, surcharges in associated currency.
+      format: number
+      minimum: 0
+      example: '128.00'
+
+    TotalPrice:
+      type: object
+      description: Contains the total price of all the offer's items.
+      required:
+        - amount
+        - currencyCode
+      properties:
+        amount:
+          description: The total amount.
+          $ref: '#/components/schemas/Amount'
+        currencyCode:
+          description: The three-letter ISO-4217 currency code associated with amounts.
+          $ref: '#/components/schemas/CurrencyCode'
+
+    CountryCode:
+      type: string
+      pattern: '^[A-Z]{2}$'
+      example: 'US'
+      description: The two-letter code of a country defined under ISO 3166.
+
+    AirportCode:
+      type: string
+      pattern: '^[A-Z]{3}$'
+      example: 'JFK'
+      description: The three-letter IATA code of the airport.
+
+    CityCode:
+      type: string
+      pattern: '^[A-Z]{3}$'
+      example: 'NYC'
+      description: The three-letter code of a city defined by IATA Metropolitan areas codes.
+
+    CarrierCode:
+      description: The IATA code of an operating carrier.
+      type: string
+      pattern: '^([A-Z0-9]{2}|[A-Z]{3})$'
+      example: 'AA'
+
+    DateTimeWithZone:
+      type: string
+      format: date-time
+      description: The ISO date time with zone designator.
+      example: '2024-03-20T11:11:21.125Z'
+
+    LocalDate:
+      type: string
+      format: date
+      description: The ISO simple date.
+      example: '2024-03-20'
+
+    AircraftCode:
+      type: string
+      pattern: '^[0-9A-Z]{3}$'
+      example: '346'
+      description: The IATA code of the aircraft.
+
+    CurrencyCode:
+      description: The three-letter ISO-4217 currency code associated with amounts.
+      type: string
+      pattern: '^[A-Z]{3}$'
+      example: 'USD'
+
+    PseudoCityCode:
+      type: string
+      pattern: '^[A-Z0-9]{4}$'
+      example: 'KF8C'
+      description: The PCC code.
+
+    ######### commons end ###############
+
+
+    ########## response start ###########
+    CabinNameResponseEnum:
+      type: string
+      default: 'Unknown'
+      example: 'Economy'
+      description: The cabin name used to filter and generate the corresponding flight offers.
+      enum:
+        - Premium First
+        - First
+        - Premium Business
+        - Business
+        - Premium Economy
+        - Economy
+        - Unknown
+
+    ProviderTypeResponseEnum:
+      type: string
+      default: 'Unknown'
+      example: 'Sabre'
+      description: The data source provider, such as Sabre, from which the offers are retrieved.
+      enum:
+        - Sabre
+        - Direct
+        - Third Party
+        - Unknown
+
+    DistributionModelTypeResponseEnum:
+      type: string
+      default: 'Unknown'
+      example: 'ATPCO'
+      description: The distribution model or the systems and companies hosting carrier APIs from which offers are retrieved.
+        carrier APIs from which offers are expected.
+      enum:
+        - ATPCO
+        - API
+        - NDC
+        - Mixed
+        - Unknown
+
+    Source:
+      type: object
+      properties:
+        provider:
+          $ref: '#/components/schemas/ProviderTypeResponseEnum'
+          description: Contains the data provider.
+        supplier:
+          type: string
+          example: 'Supplier identifier'
+          description: The data supplier identifier.
+        distributionModel:
+          $ref: '#/components/schemas/DistributionModelTypeResponseEnum'
+          description: The data distribution model.
+
+    ## Response starts here
+    HiddenStop:
+      type: object
+      required:
+        - airportCode
+      properties:
+        airportCode:
+          $ref: '#/components/schemas/AirportCode'
+          description: Contains the stopover point in the three-letter IATA airport code format.
+        arrivalDate:
+          $ref: '#/components/schemas/LocalDate'
+          description: The arrival date in the airport time zone.
+        arrivalTime:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          example: '15:00'
+          description: The arrival time in the airport time zone.
+        departureDate:
+          $ref: '#/components/schemas/LocalDate'
+          description: The departure date in the airport time zone.
+        departureTime:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          example: '17:55'
+          description: The departure time in the airport time zone.
+        durationInMinutes:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 90
+          description: The Stop duration in minutes.
+        hasChangeOfGauge:
+          type: boolean
+          default: false
+          description: If `true`, requires a change of aircraft.
+        aircraftTypeCode:
+          $ref: '#/components/schemas/AircraftCode'
+          description: The IATA code of the aircraft type.
+      description: The hidden stop details in order of their appearance. Returned for
+        flight where stops are applicable.
+
+    Journey:
+      type: object
+      description: Contains a portion of travel. A round trip consists of two journeys (for example, outbound and inbound).
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 'ccc04ff0-d5ce-4314-9cbc-f01ec6bb91ab'
+          description: The unique ID of the journey.
+        requestedJourneyIndex:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 0
+          description: The zero-based index of the journey from the request.
+      oneOf:
+        - type: object
+          properties:
+            originAirportCode:
+              $ref: '#/components/schemas/AirportCode'
+              description: Contains the departure airport of the first flight within the journey.
+            destinationAirportCode:
+              $ref: '#/components/schemas/AirportCode'
+              description: The arrival airport of the last flight within the journey.
+            departureDate:
+              $ref: '#/components/schemas/LocalDate'
+              description: The departure date of the first flight within the journey.
+        - type: object
+          properties:
+            flightRefs:
+              type: array
+              items:
+                type: string
+                format: uuid
+                example: 'bf74c8ee-393a-45c8-8f15-a27fa6395050'
+                description: Reference to flight.
+              description: Lists the flight references for the given journey.
+              minItems: 1
+    Flight:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 'bf74c8ee-393a-45c8-8f15-a27fa6395050'
+          description: The unique ID of the flight.
+        departureAirportCode:
+          $ref: '#/components/schemas/AirportCode'
+          description: The three-latter IATA code of the departure airport.
+        departureDate:
+          $ref: '#/components/schemas/LocalDate'
+          description: The departure date in the airport time zone.
+        departureTime:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          example: '17:55'
+          description: The departure time in the airport time zone.
+        arrivalAirportCode:
+          $ref: '#/components/schemas/AirportCode'
+          description: The three-latter IATA code of the arrival airport.
+        arrivalDate:
+          $ref: '#/components/schemas/LocalDate'
+          description: The arrival date in the airport time zone.
+        arrivalTime:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          example: '15:00'
+          description: The arrival time in the airport time zone.
+        operatingAirlineCode:
+          $ref: '#/components/schemas/CarrierCode'
+          description: The IATA code of an operating carrier.
+        operatingFlightNumber:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 9999
+          example: 1001
+          description: An operating carrier flight number.
+        marketingAirlineCode:
+          $ref: '#/components/schemas/CarrierCode'
+          description: The IATA code of a marketing carrier.
+        marketingFlightNumber:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 9999
+          example: 1001
+          description: A marketing carrier flight number.
+        disclosureAirlineCode:
+          $ref: '#/components/schemas/CarrierCode'
+          description: The disclosure carrier code or name.
+        aircraftTypeCode:
+          $ref: '#/components/schemas/AircraftCode'
+          description: The IATA code of the aircraft type.
+        durationInMinutes:
+          type: integer
+          format: int32
+          example: 90
+          description: The flight duration in minutes.
+        hiddenStops:
+          type: array
+          items:
+            $ref: '#/components/schemas/HiddenStop'
+          description: Lists the stop details when a flight includes hidden stops.
+    Fares:
+      type: object
+      properties:
+        equivalentFare:
+          $ref: '#/components/schemas/Amount'
+          description: Contains the net fare amount.
+        taxAmount:
+          $ref: '#/components/schemas/Amount'
+          description: Contains the total tax amount.
+        amount:
+          $ref: '#/components/schemas/Amount'
+          description: The total amount, including air fare, taxes, and surcharges.
+        currencyCode:
+          $ref: '#/components/schemas/CurrencyCode'
+          description: The three-letter ISO-4217 currency code associated with amounts.
+      description: The total price amount, including taxes and surcharges.
+    FareComponentSegmentDetail:
+      type: object
+      required:
+        - flightRef
+      properties:
+        flightRef:
+          type: string
+          format: uuid
+          example: 'bf74c8ee-393a-45c8-8f15-a27fa6395050'
+          description: The ID of the flight.
+        bookingClassCode:
+          type: string
+          pattern: '^[A-Z]{1,2}$'
+          example: 'M'
+          description: The Reservation Booking Designator (booking code) applicable
+            for specific segment of the journey the fare was calculated for.
+        cabinName:
+          $ref: '#/components/schemas/CabinNameResponseEnum'
+          description: The cabin code associated with the specified segment of the
+            journey the fare was calculated for.
+      description: Contains the details of the fare component, which are associated with a specific segment of the journey.
+        a specific segment of the journey.
+    FareBrand:
+      type: object
+      properties:
+        code:
+          type: string
+          example: 'BASICECON'
+          description: The brand code.
+        name:
+          type: string
+          example: 'BASIC ECONOMY'
+          description: The brand name.
+        programId:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 372463
+          description: The brand program identifier.
+      description: Contains the brand details associated with the fare component.
+    FareComponent:
+      type: object
+      properties:
+        amount:
+          $ref: '#/components/schemas/Amount'
+          description: Contains the net fare component amount.
+        currencyCode:
+          $ref: '#/components/schemas/CurrencyCode'
+          description: The three-letter ISO-4217 currency code associated with the
+            amount.
+        publishedAmount:
+          $ref: '#/components/schemas/Amount'
+          description: The published net fare component amount.
+        publishedCurrencyCode:
+          $ref: '#/components/schemas/CurrencyCode'
+          description: The three-letter ISO-4217 currency code associated with the
+            publishedAmount.
+        exchangeRate:
+          type: string
+          format: number
+          minimum: 0
+          example: '1.00000'
+          description: The exchange rate used to convert the construction fare amount
+            published in neutral unit of currency (NUC) to published fare amount
+            in a local currency of trip origin.
+          exclusiveMinimum: true
+        fareBasisCode:
+          type: string
+          example: 'W7C1V2'
+          description: The Fare Basis associated with the fare component.
+        accountCode:
+          type: string
+          example: 'ACC33'
+          description: The account code associated with the fare component.
+        segmentDetails:
+          type: array
+          items:
+            $ref: '#/components/schemas/FareComponentSegmentDetail'
+          description: Lists the segment details.
+          minItems: 1
+        brand:
+          $ref: '#/components/schemas/FareBrand'
+          description: Defines the brand associated with the fare component.
+      description: Contains the fare components used to calculate the total price for a specific itinerary.
+
+    PrivateFareIndicatorEnum:
+      type: string
+      example: 'Has Program Code'
+      description: The private fare type.
+      enum:
+        - Has Program Code
+        - Ineligible For Ticketing
+        - Any
+
+    ReturnedTraveler:
+      type: object
+      required:
+        - passengerTypeCode
+      properties:
+        id:
+          type: string
+          example: 'Passenger1'
+          description: The passenger ID used to generate the offer.
+        passengerTypeCode:
+          type: string
+          pattern: '^[0-9A-Z]{3}$'
+          example: 'ADT'
+          description: The passenger type used to generate the offer.
+      description: Contains the traveler type for which the fare was generated, paired with the corresponding passenger index from the request.
+        with index of passenger from the request.
+    FareDetail:
+      type: object
+      required:
+        - travelers
+        - fareTotal
+        - fareComponents
+      properties:
+        travelers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReturnedTraveler'
+          description: Lists the group of travelers associated with the fare.
+          minItems: 1
+        fareTotal:
+          $ref: '#/components/schemas/Fares'
+          description: The total fare amount, including taxes and surcharges.
+        privateFare:
+          $ref: '#/components/schemas/PrivateFareIndicatorEnum'
+          description: The type of private fare used.
+        validatingAirlineCode:
+          $ref: '#/components/schemas/CarrierCode'
+          description: The validating carrier IATA code.
+        fareComponents:
+          type: array
+          items:
+            $ref: '#/components/schemas/FareComponent'
+          description: Lists the fare components used to compute the fare.
+          minItems: 1
+      description: Contains the list of fare-related details.
+    BaseOffer:
+      type: object
+      description: Contains a purchasable flight travel package represented as an offer.
+      discriminator:
+        propertyName: type
+        mapping:
+          FlightOffer: FlightOffer
+          VirtualInterlineOffer: VirtualInterlineOffer
+      required:
+        - type
+        - id
+        - createdAt
+        - validUntil
+        - source
+        - totalPrice
+      properties:
+        type:
+          type: string
+          example: FlightOffer
+          description: The specific subtype of an Offer.
+        id:
+          type: string
+          example: '123eww324'
+          description: The unique offer identifier.
+        createdAt:
+          type: string
+          format: date-time
+          example: '2020-10-28T11:11:21.125Z'
+          description: The exact point in time at which the offer was created. It
+            depends on the data source that was used for the search,
+            expressed in UTC.
+        validUntil:
+          type: string
+          format: date-time
+          example: '2020-10-28T11:11:21.125Z'
+          description: The expiration timestamp for the offer, expressed in UTC.
+            UTC.
+        source:
+          $ref: '#/components/schemas/Source'
+          description: The origin of the offer.
+        totalPrice:
+          $ref: '#/components/schemas/TotalPrice'
+          description: The total price of all mandatory offer's items.
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BaseOfferItem'
+          description: Lists the items within an offer, which may include a Flight (priced itinerary) or an Ancillary not already included in the itinerary price.
+          minItems: 1
+        paymentTimeLimit:
+          type: string
+          format: date-time
+          example: '2020-10-28T11:11:21.125Z'
+          description: The date by which a commitment to pay must be made for the
+            confirmed items in an offer.
+        applicableToPseudoCityCodes:
+          type: array
+          items:
+            type: string
+            pattern: '^[A-Z0-9]{3,4}$'
+            example: 'KF8C'
+            description: The PCC code.
+          description: The list of applicable PCCs for the offer.
+        journeyRefs:
+          type: array
+          items:
+            type: string
+            format: uuid
+            example: 'ccc04ff0-d5ce-4314-9cbc-f01ec6bb91ab'
+          description: Lists the journeys to which the offer applies.
+          minItems: 1
+        isNonStop:
+          type: boolean
+          description: If `true`, indicates that the offer item contains only non‑stop journeys. Returned in PriceOnly mode when flight information is unavailable.
+            When true, indicates that offer item contains only non stop journeys.
+          example: false
+
+    VirtualInterlineOffer:
+      type: object
+      description: Contains the details of a purchasable flight travel package.
+      allOf:
+        - $ref: '#/components/schemas/BaseOffer'
+
+    FlightOffer:
+      type: object
+      description: Contains the comprehensive details of a purchasable flight travel package.
+      allOf:
+        - $ref: '#/components/schemas/BaseOffer'
+
+    BaseOfferItem:
+      type: object
+      description: Contains the basic details of an offer item.
+      discriminator:
+        propertyName: type
+        mapping:
+          FlightOfferItem: FlightOfferItem
+          VirtualInterlineOfferItem: VirtualInterlineOfferItem
+      required:
+        - type
+        - id
+        - isMandatory
+      properties:
+        type:
+          type: string
+          example: FlightOfferItem
+          description: The subtype of an OfferItem.
+        id:
+          type: string
+          example: '123eww324-1-1'
+          description: The unique ID of the offer item used to track and progress the order through the workflow.
+        isMandatory:
+          type: boolean
+          default: true
+          description: If `true`, indicates that the Offer Item is mandatory and cannot be removed from the Offer. These items automatically transition into Order Items. If false, the Offer Item is considered optional. This indicator is required at the Fare level and applies to both ATPCO and NDC content.
+            content. If set to `true` indicates mandatory Offer Items that can't
+            be removed from the Offer. Mandatory Offer Items transition into
+            Order Items. If `false`, the Offer item is optional.
+
+    VirtualInterlineOfferItem:
+      description: Contains information on a virtual interline offer item.
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/BaseOfferItem'
+        - type: object
+          required:
+            - offerRefs
+          properties:
+            offerRefs:
+              type: array
+              minItems: 2
+              items:
+                type: string
+              uniqueItems: true
+              description: Lists the references for the offer.
+              example:
+                - 123eww323
+                - 123eww324
+
+    FlightOfferItem:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/BaseOfferItem'
+        - type: object
+          required:
+            - fares
+          properties:
+            fares:
+              type: array
+              items:
+                $ref: '#/components/schemas/FareDetail'
+              description: Lists the fare details for the given flight offer.
+              minItems: 1
+            isPartial:
+              type: boolean
+              default: false
+              description: If `true`, indicates that the offer covers the entire trip in a one-way or multi-ticket scenario.
+                part of trip or whole.
+
+    Error:
+      type: object
+      required:
+        - category
+        - type
+      properties:
+        category:
+          type: string
+          example: 'BAD_REQUEST'
+          description: The classification of errors, distinguishing between client-side and server-side issues.
+            (client-side or server-side) problem occurred.
+        type:
+          type: string
+          example: 'REQUIRED_FIELD_MISSING'
+          description: The application-specific error type or a standard value from the list of typical Sabre API errors.
+            Sabre API errors.
+        description:
+          type: string
+          example: 'Client did not provide required data. See fieldName for the item
+              expected in the request.'
+          description: The human-readable description of the error, providing sufficient detail to assist a software developer in debugging the problem.
+            information that a software developer can use to debug the problem.
+        fieldName:
+          type: string
+          example: 'currencyCode'
+          description: The additional debugging information, such as the name of a property missing from the request payload.
+        fieldPath:
+          type: string
+          example: 'currencyCode'
+          description: The specific supplemental information provided to assist in debugging the error, such as the name of a missing property in the request payload.
+            example the name of property missing from a request payload.
+        fieldValue:
+          type: string
+          example: 'field value'
+          description: The reference to the invalid field value that triggered the error response.
+
+        ########## response ends ###########
+
+  examples:
+    OpenDestinationRequest:
+      value:
+        {
+          "departureLocation": {
+            "locationType": "Airport",
+            "locationCode": "JFK"
+          },
+          "arrivalLocations": [
+            {
+              "locationFilter": "Limit To",
+              "location": {
+                "locationType": "Country",
+                "locationCode": "FR"
+              }
+            },
+            {
+              "locationFilter": "Limit To",
+              "location": {
+                "locationType": "Theme",
+                "locationCode": "Beach"
+              }
+            }
+          ],
+          "departureDateRange": {
+            "fromDate": "2026-07-29",
+            "toDate": "2026-12-31"
+          },
+          "lengthsOfStay": [
+            1,
+            3,
+            5
+          ],
+          "processingOptions": {
+            "publicContentPointOfSaleCountry": "US",
+            "returnLowestNonStopFare": false,
+            "returnMode": "Per Day",
+            "budget": {
+              "maximumTotalFareAmount": 500,
+              "currencyCode": "USD"
+            }
+          },
+          "sources": {
+            "providers": [
+              "Sabre"
+            ],
+            "distributionModels": [
+              "ATPCO"
+            ]
+          },
+          "configuration": {
+            "customerCode": "W0H3"
+          }
+        }
+
+    OpenDestinationWithMapModeRequest:
+      value:
+        {
+          "departureLocation": {
+            "locationType": "Airport",
+            "locationCode": "JFK"
+          },
+          "arrivalLocations": [
+            {
+              "locationFilter": "Limit To",
+              "location": {
+                "locationType": "Country",
+                "locationCode": "FR"
+              }
+            },
+            {
+              "locationFilter": "Limit To",
+              "location": {
+                "locationType": "Theme",
+                "locationCode": "Beach"
+              }
+            }
+          ],
+          "departureDateRange": {
+            "fromDate": "2026-07-29",
+            "toDate": "2026-12-31"
+          },
+          "lengthsOfStay": [
+            1,
+            3,
+            5
+          ],
+          "processingOptions": {
+            "returnMode": "Per Date Range",
+            "returnOffersPerLengthOfStay": false
+          }
+        }
+
+
+    OpenOriginRequest:
+      value:
+        {
+          "departureLocation": {
+            "locationType": "Country",
+            "locationCode": "US"
+          },
+          "arrivalLocations": [
+            {
+              "locationFilter": "Limit To",
+              "location": {
+                "locationType": "City",
+                "locationCode": "LON"
+              }
+            }
+          ],
+          "departureDateRange": {
+            "fromDate": "2026-07-29",
+            "toDate": "2026-12-31"
+          },
+          "lengthsOfStay": [
+            7
+          ],
+          "processingOptions": {
+            "publicContentPointOfSaleCountry": "US",
+            "returnLowestNonStopFare": false,
+            "returnMode": "Per Day",
+            "returnFullOffers": true,
+            "budget": {
+              "maximumTotalFareAmount": 500,
+              "currencyCode": "USD"
+            }
+          },
+          "sources": {
+            "providers": [
+              "Sabre"
+            ],
+            "distributionModels": [
+              "ATPCO"
+            ]
+          }
+        }
+
+    OpenOriginRequest2:
+      value:
+        {
+          "departureLocation": {
+            "locationType": "CityList",
+            "locationCodes": [ "KRK", "KTW", "RZE" ]
+          },
+          "arrivalLocations": [
+            {
+              "locationFilter": "Limit To",
+              "location": {
+                "locationType": "City",
+                "locationCode": "BCN"
+              }
+            }
+          ],
+          "departureDateRange": {
+            "fromDate": "2026-07-01",
+            "toDate": "2026-07-31"
+          },
+          "lengthsOfStay": [
+            3,4,5
+          ]
+        }
+
+    FlightsToAnywhere:
+      value:
+        {
+          "departureLocation": {
+            "locationType": "City",
+            "locationCode": "NYC"
+          },
+          "departureDateRange": {
+            "fromDate": "2026-07-29",
+            "toDate": "2026-12-31"
+          },
+          "processingOptions": {
+            "publicContentPointOfSaleCountry": "US",
+            "returnMode": "Per Day",
+            "returnFullOffers": true
+          }
+        }

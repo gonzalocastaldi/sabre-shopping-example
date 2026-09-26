@@ -1,0 +1,71 @@
+# Source: Sabre Developer Hub MCP · get_spec_file("rest-api/geo-autocomplete/v2")
+# https://developer.sabre.com/rest-api/geo-autocomplete/v2
+# Swagger 2.0: openapi-typescript no lo soporta, los tipos están escritos a mano en src/api/types/geo.ts
+swagger: '2.0'
+info:
+  title: Geo Autocomplete
+  version: v2
+host: api.cert.platform.sabre.com
+basePath: /
+schemes:
+  - https
+paths:
+  /v2/geo/autocomplete:
+    get:
+      operationId: geoAutocomplete
+      parameters:
+        - { name: query, type: string, in: query, required: true, description: 'Minimum three characters.' }
+        - { name: category, type: string, in: query, required: false, enum: [AIR, CITY, RAIL, POI, LOCATION] }
+        - { name: limit, type: number, in: query, required: false, default: 5, minimum: 1, maximum: 30 }
+        - { name: clientId, type: string, in: query, required: false }
+      responses:
+        '200':
+          description: Successful Response.
+          schema:
+            $ref: '#/definitions/GeoAutocompleteResponse'
+definitions:
+  GeoAutocompleteResponse:
+    type: object
+    properties:
+      responseHeader:
+        type: object
+        properties:
+          status: { type: number }
+          QTime: { type: number }
+      grouped:
+        type: object
+        properties:
+          category:AIR: { $ref: '#/definitions/CategoryResponse' }
+          category:RAIL: { $ref: '#/definitions/CategoryResponse' }
+          category:CITY: { $ref: '#/definitions/CategoryResponse' }
+          category:POI: { $ref: '#/definitions/CategoryResponse' }
+          categpry:LOCATION: { $ref: '#/definitions/CategoryResponse' }
+  CategoryResponse:
+    type: object
+    properties:
+      matches: { type: number }
+      doclist:
+        type: object
+        properties:
+          numFound: { type: number }
+          start: { type: number }
+          docs:
+            type: array
+            items:
+              type: object
+              properties:
+                name: { type: string, example: Dallas/Fort Worth Intl. }
+                city: { type: string, example: Dallas }
+                country: { type: string, example: US }
+                countryName: { type: string, example: United States Of America }
+                stateName: { type: string, example: Texas }
+                state: { type: string, example: TX }
+                category: { type: string, example: AIR }
+                id: { type: string, example: DFW }
+                dataset: { type: string, example: AIR }
+                datasource: { type: string, example: INNOVATA }
+                confidenceFactor: { type: string, example: '1' }
+                latitude: { type: string, example: '32.896111' }
+                longitude: { type: string, example: '-97.041111' }
+                iataCityCode: { type: string, example: QDF }
+                ranking: { type: number, example: 884 }

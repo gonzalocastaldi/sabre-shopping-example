@@ -1,0 +1,171 @@
+@import 'tailwindcss';
+@import '@fontsource/barlow/400.css';
+@import '@fontsource/barlow/500.css';
+@import '@fontsource/barlow/600.css';
+@import '@fontsource/barlow-condensed/500.css';
+@import '@fontsource/barlow-condensed/600.css';
+@import 'maplibre-gl/dist/maplibre-gl.css';
+
+/* Tokens (ver docs/design-plan.md). Tailwind v4 expone cada --color-* como utilidades. */
+@theme {
+  --font-sans: 'Barlow', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Barlow Condensed', 'Barlow', ui-sans-serif, sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-magenta: var(--magenta);
+  --color-magenta-strong: var(--magenta-strong);
+  --color-cyan: var(--cyan);
+  --color-cyan-soft: var(--cyan-soft);
+  --color-land: var(--land);
+  --color-water: var(--water);
+  --color-line: var(--line);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+
+  --text-2xs: 0.8125rem;
+  --text-hero: 3.5rem;
+}
+
+:root {
+  color-scheme: light;
+  --paper: #eef2f1;
+  --ink: #1b2433;
+  --ink-soft: #4a5566;
+  --magenta: #b8175a;
+  --magenta-strong: #93104a;
+  --cyan: #0a6f7e;
+  --cyan-soft: #d7ecee;
+  --land: #f9faf7;
+  --water: #cfdde3;
+  --line: #d3dcdc;
+  --warn: #8a5a00;
+  --danger: #b3261e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --paper: #0d1522;
+    --ink: #e8eef2;
+    --ink-soft: #a9b6c3;
+    --magenta: #c93370;
+    --magenta-strong: #b02a61;
+    --cyan: #5cc4d1;
+    --cyan-soft: #12343c;
+    --land: #1b2740;
+    --water: #101a2b;
+    --line: #2a3850;
+    --warn: #e0b04a;
+    --danger: #ff8a80;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --paper: #0d1522;
+  --ink: #e8eef2;
+  --ink-soft: #a9b6c3;
+  --magenta: #c93370;
+  --magenta-strong: #b02a61;
+  --cyan: #5cc4d1;
+  --cyan-soft: #12343c;
+  --land: #1b2740;
+  --water: #101a2b;
+  --line: #2a3850;
+  --warn: #e0b04a;
+  --danger: #ff8a80;
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  button,
+  a,
+  input,
+  select,
+  label[for] {
+    touch-action: manipulation;
+  }
+  :focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: 2px;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    line-height: 1.1;
+    text-wrap: balance;
+    scroll-margin-top: 5rem;
+  }
+  select {
+    background-color: var(--land);
+    color: var(--ink);
+  }
+}
+
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Línea de corte de tarjeta de embarque: separa campos distintos del buscador. */
+  .perforation {
+    background-image: linear-gradient(to bottom, var(--line) 50%, transparent 50%);
+    background-size: 1px 8px;
+    background-repeat: repeat-y;
+    width: 1px;
+  }
+}
+
+/* Arco de ruta: la única animación orquestada (se dibuja cuando el usuario elige un destino). */
+@keyframes draw-route {
+  from {
+    stroke-dashoffset: var(--route-length, 1000);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* MapLibre: controles con los tokens de la marca. */
+.maplibregl-ctrl-group {
+  background: var(--land) !important;
+  border: 1px solid var(--line);
+  box-shadow: none !important;
+}
+.maplibregl-ctrl-group button + button {
+  border-top-color: var(--line) !important;
+}
+.maplibregl-ctrl button .maplibregl-ctrl-icon {
+  filter: var(--map-icon-filter, none);
+}
+:root[data-theme='dark'] .maplibregl-ctrl button .maplibregl-ctrl-icon {
+  filter: invert(1);
+}
+.maplibregl-ctrl-attrib {
+  background: color-mix(in srgb, var(--land) 80%, transparent) !important;
+  color: var(--ink-soft);
+}

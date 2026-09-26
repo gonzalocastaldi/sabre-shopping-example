@@ -1,0 +1,14 @@
+node_modules
+dist
+*.local
+.env
+.env.*
+!.env.example
+coverage
+test-results
+playwright-report
+.vite
+*.tsbuildinfo
+# Grabaciones de respuestas reales de PROD (opcionales, regenerables con SABRE_RECORD=1)
+src/mocks/recorded/*.json
+!src/mocks/recorded/.gitkeep
