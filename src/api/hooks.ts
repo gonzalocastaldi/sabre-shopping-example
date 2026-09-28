@@ -18,6 +18,7 @@ import {
   isOpenOrigin,
   type ReshopForm,
   type SearchCriteria,
+  type MarketSettings,
   type ShopSelection,
   type Travelers,
 } from './mappers';
@@ -27,8 +28,22 @@ import type { GeoAutocompleteResponse } from './types/geo';
 
 const STALE = 10 * 60_000;
 
-export function useExploreSearch(criteria: SearchCriteria | undefined) {
+/**
+ * Mercado efectivo de la demo. Si no cargaste un PCC en Ajustes, se hereda el del proxy
+ * (SABRE_REQUEST_PCC de .env.local), que es lo que ya documenta .env.example.
+ *
+ * No es cosmético: Flight Check exige pseudoCityCode. Sin él responde HTTP 200 con solo
+ * "timestamp", sin errors ni warnings, y la pantalla de revisión queda vacía sin explicación.
+ * Verificado en CERT con la misma oferta: sin PCC 0 ofertas, con PCC 1.
+ */
+function useMarket(): MarketSettings {
   const market = marketOf(useSettings());
+  const meta = useProxyMeta();
+  return market.pcc ? market : { ...market, pcc: meta.data?.pcc ?? undefined };
+}
+
+export function useExploreSearch(criteria: SearchCriteria | undefined) {
+  const market = useMarket();
   const request = criteria ? buildExploreSearchRequest(criteria, market) : undefined;
   return useQuery({
     queryKey: ['flightSearch', 'explore', request],
@@ -53,7 +68,7 @@ export interface CalendarParams {
 }
 
 export function useCalendarSearch(params: CalendarParams | undefined) {
-  const market = marketOf(useSettings());
+  const market = useMarket();
   const request = params ? buildCalendarSearchRequest(params, market) : undefined;
   return useQuery({
     queryKey: ['flightSearch', 'calendar', request],
@@ -69,7 +84,7 @@ export function useCalendarSearch(params: CalendarParams | undefined) {
 }
 
 export function useMonthOverview(params: { origin: string; destination: string; lengthOfStay?: number; nonStop?: boolean } | undefined) {
-  const market = marketOf(useSettings());
+  const market = useMarket();
   const request = params ? buildMonthOverviewRequest(params, market) : undefined;
   return useQuery({
     queryKey: ['flightSearch', 'months', request],
@@ -91,7 +106,7 @@ export function useMonthOverview(params: { origin: string; destination: string; 
 }
 
 export function useFlightShop(selection: ShopSelection | undefined) {
-  const market = marketOf(useSettings());
+  const market = useMarket();
   const request = selection ? buildShopRequest(selection, market) : undefined;
   return useQuery({
     queryKey: ['flightShop', request],
@@ -103,7 +118,7 @@ export function useFlightShop(selection: ShopSelection | undefined) {
 }
 
 export function useFlightCheck(offer: TripOffer | undefined, travelers: Travelers) {
-  const market = marketOf(useSettings());
+  const market = useMarket();
   const request = offer ? buildCheckRequest(offer, travelers, market) : undefined;
   return useQuery({
     queryKey: ['flightCheck', offer?.id, request],
@@ -119,7 +134,7 @@ export type RefreshResult = NonNullable<FlightRefreshResponse['itineraries']>[nu
 
 /** Valida en lote (un request por ruta). Devuelve offerId → resultado. */
 export function useFlightRefresh() {
-  const market = marketOf(useSettings());
+  const market = useMarket();
   return useMutation({
     mutationFn: async ({ offers, travelers }: { offers: TripOffer[]; travelers: Travelers }) => {
       const groups = buildRefreshRequests(offers, travelers, market);
@@ -139,7 +154,7 @@ export function useFlightRefresh() {
 }
 
 export function useFlightReshop() {
-  const market = marketOf(useSettings());
+  const market = useMarket();
   return useMutation({
     mutationFn: async (form: ReshopForm) => {
       const res = await sabreRequest<MosaicResponse>('flightReshop', buildReshopRequest(form, market), { sensitive: true });

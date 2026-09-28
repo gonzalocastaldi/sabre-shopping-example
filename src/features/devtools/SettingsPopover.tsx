@@ -19,8 +19,24 @@ export function ConnectionBadge() {
   const proxyDown = live && meta.isError;
   const ids = { pos: useId(), cur: useId(), pcc: useId() };
 
-  const label = !live ? 'Datos de ejemplo' : missingToken ? 'Falta el token' : proxyDown ? 'Proxy no disponible' : 'En vivo en PROD';
-  const shortLabel = !live ? 'Mock' : missingToken || proxyDown ? 'Revisar' : 'PROD';
+  // El entorno sale del baseUrl del proxy: mostrar "PROD" mientras se le pega a CERT
+  // (o al revés) es justo el error que no queremos cometer delante de un cliente.
+  const env = !meta.data ? 'Sabre' : meta.data.baseUrl.includes('cert.platform') ? 'CERT' : meta.data.baseUrl.includes('api.platform.sabre.com') ? 'PROD' : 'Sabre';
+
+  const proxyPcc = meta.data?.pcc ?? undefined;
+  const effectivePcc = settings.pcc || proxyPcc;
+  /**
+   * Flight Check exige pseudoCityCode: sin él responde HTTP 200 con solo "timestamp",
+   * sin errors ni warnings, y la pantalla de revisión queda vacía sin explicación.
+   * "A successful call includes itinerary details in the request, along with other
+   * mandatory data such as the passenger type code and pseudoCityCode."
+   * https://developer.sabre.com/rest-api/flightcheck-api/v1/index.html
+   */
+  const pccIssue = !live || !meta.data ? undefined : !effectivePcc ? 'missing' : settings.pcc && proxyPcc && settings.pcc !== proxyPcc ? 'override' : undefined;
+  const healthy = live && !missingToken && !proxyDown && !pccIssue;
+
+  const label = !live ? 'Datos de ejemplo' : missingToken ? 'Falta el token' : proxyDown ? 'Proxy no disponible' : pccIssue ? `En vivo en ${env}, revisá el PCC` : `En vivo en ${env}`;
+  const shortLabel = !live ? 'Mock' : missingToken || proxyDown || pccIssue ? 'Revisar' : env;
 
   return (
     <Popover.Root>
@@ -29,10 +45,10 @@ export function ConnectionBadge() {
           type="button"
           className={cx(
             'inline-flex h-9 items-center gap-2 rounded-full border px-3 text-sm transition-colors',
-            live && !missingToken && !proxyDown ? 'border-cyan/40 text-ink hover:bg-cyan-soft' : 'border-warn/40 text-ink hover:bg-warn/10',
+            healthy ? 'border-cyan/40 text-ink hover:bg-cyan-soft' : 'border-warn/40 text-ink hover:bg-warn/10',
           )}
         >
-          <span aria-hidden="true" className={cx('size-2 shrink-0 rounded-full', live && !missingToken && !proxyDown ? 'bg-cyan' : 'bg-warn')} />
+          <span aria-hidden="true" className={cx('size-2 shrink-0 rounded-full', healthy ? 'bg-cyan' : 'bg-warn')} />
           <span className="hidden whitespace-nowrap sm:inline">{label}</span>
           <span className="whitespace-nowrap sm:hidden" aria-label={label}>
             {shortLabel}
@@ -73,6 +89,19 @@ export function ConnectionBadge() {
                         : 'no configurado. Copiá .env.example a .env.local y pegá tu token.'}
                   </p>
                   {meta.data.recording && <p className="text-warn">Grabando respuestas en src/mocks/recorded/.</p>}
+                  <p>
+                    PCC: <span translate="no">{effectivePcc ?? '—'}</span>
+                    <span className="text-ink-soft">{settings.pcc ? ' (de Ajustes)' : proxyPcc ? ' (heredado del proxy)' : ''}</span>
+                  </p>
+                  {pccIssue === 'missing' && (
+                    <p className="mt-1 text-danger">Sin PCC, Flight Check responde vacío y sin error. Cargá SABRE_REQUEST_PCC en .env.local o escribí uno acá abajo.</p>
+                  )}
+                  {pccIssue === 'override' && (
+                    <p className="mt-1 text-warn">
+                      Estás pisando el PCC del proxy (<span translate="no">{proxyPcc}</span>) con <span translate="no">{settings.pcc}</span>. Si Flight Check no devuelve ofertas, volvé a{' '}
+                      <span translate="no">{proxyPcc}</span>.
+                    </p>
+                  )}
                 </>
               )}
             </div>
@@ -115,10 +144,10 @@ export function ConnectionBadge() {
                 maxLength={4}
                 value={settings.pcc}
                 onChange={(e) => updateSettings({ pcc: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })}
-                placeholder="Ej.: AB12…"
+                placeholder={meta.data?.pcc ? `${meta.data.pcc} (heredado del proxy)` : 'Ej.: AB12…'}
                 className="mt-1 h-9 w-full rounded-lg border border-line bg-land px-2 uppercase"
               />
-              <p className="mt-1 text-2xs text-ink-soft">Se envía como customerCode (Search) y pseudoCityCode (Shop, Check y Refresh).</p>
+              <p className="mt-1 text-2xs text-ink-soft">Se envía como customerCode (Search) y pseudoCityCode (Shop, Check y Refresh). Si lo dejás vacío se usa el de SABRE_REQUEST_PCC. Flight Check no devuelve ofertas sin PCC.</p>
             </div>
           </div>
           <Popover.Arrow className="fill-land" />
