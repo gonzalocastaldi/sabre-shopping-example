@@ -1,13 +1,14 @@
-// Smoke test en vivo contra Sabre (PROD por defecto), SOLO SHOPPING.
+// Smoke test en vivo contra Sabre (PROD por defecto), SOLO Flight Search y Flight Refresh.
 // Usa SABRE_TOKEN de .env.local y le pega directo a Sabre, sin browser ni proxy:
-//   Flight Search (explorar) → Flight Search (calendario) → Flight Refresh → Flight Shop → Flight Check
-// Solo imprime estado, latencia y cantidades; nunca el token ni los bodies.
+//   Flight Search (explorar) → Flight Refresh (destino más barato, como el botón de la tarjeta)
+//   → Flight Search (calendario) → Flight Refresh (varias fechas, un request por fecha)
+// Solo imprime estado, latencia, cantidades y el resultado de la validación; nunca el token ni los bodies.
 // Uso: npm run smoke:live   (opcional: SMOKE_ORIGIN=MVD npm run smoke:live)
 
 const BASE = process.env.SABRE_BASE_URL || 'https://api.platform.sabre.com';
 const ORIGIN = process.env.SMOKE_ORIGIN || 'BUE';
 const PCC = process.env.SABRE_REQUEST_PCC || undefined;
-const ALLOWED = new Set(['/v1/offers/flightSearch', '/v1/offers/flightRefresh', '/v1/offers/flightShop', '/v1/offers/flightCheck']);
+const ALLOWED = new Set(['/v1/offers/flightSearch', '/v1/offers/flightRefresh']);
 
 const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
 const iso = (d) => d.toISOString().slice(0, 10);
@@ -35,9 +36,10 @@ async function getToken() {
 }
 
 const token = await getToken();
+let failures = 0;
 
 async function call(label, path, body) {
-  if (!ALLOWED.has(path)) throw new Error(`${path} no está en la allowlist de shopping`);
+  if (!ALLOWED.has(path)) throw new Error(`${path} no está en la allowlist (solo Flight Search y Flight Refresh)`);
   const started = Date.now();
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
@@ -53,15 +55,20 @@ async function call(label, path, body) {
   }
   const err = data.errors?.[0];
   const count = data.offers?.length ?? data.itineraries?.length ?? 0;
-  console.log(`${res.ok && !(!count && err) ? '✓' : '✗'} ${label} → ${res.status} en ${ms} ms, ${count} resultados${err ? ` (${err.type ?? ''}: ${err.description ?? ''})` : ''}`);
+  const ok = res.ok && !(!count && err);
+  if (!ok) failures++;
+  console.log(
+    `${ok ? '✓' : '✗'} ${label} → ${res.status} en ${ms} ms, ${count} resultados` +
+      `${err ? ` (${err.type ?? ''}: ${err.description ?? ''}${err.fieldPath ? `, campo ${err.fieldPath}` : ''})` : ''}`,
+  );
   if (res.status === 401) {
     console.error('  El token venció o no es válido. Actualizá SABRE_TOKEN en .env.local.');
     process.exit(1);
   }
-  return { ok: res.ok, data };
+  return { ok, data };
 }
 
-/** Resuelve offers → journeys → flights (modelo Mosaic). */
+/** Resuelve offers → journeys → flights (modelo Mosaic), con la clase tarifaria de cada vuelo. */
 function flightsOf(data, offer) {
   const journeys = new Map((data.journeys ?? []).map((j) => [j.id, j]));
   const flights = new Map((data.flights ?? []).map((f) => [f.id, f]));
@@ -85,75 +92,90 @@ function flightsOf(data, offer) {
   );
 }
 
-console.log(`Sabre ${BASE.replace('https://', '')}, origen ${ORIGIN}\n`);
+/**
+ * Request de Flight Refresh como lo arma la app (buildRefreshRequests): los journeys de arriba
+ * salen de los vuelos, así cada departureDate coincide con la del primer vuelo del itinerario.
+ * Todos los itinerarios del request tienen que compartir ruta y fechas.
+ */
+function refreshRequest(legsList) {
+  const first = legsList[0];
+  return {
+    journeys: first.map((flights) => ({
+      departureLocation: { airportCode: flights[0].departureAirportCode },
+      arrivalLocation: { airportCode: flights.at(-1).arrivalAirportCode },
+      departureDate: flights[0].departureDate,
+    })),
+    travelers: [{ passengerTypeCode: 'ADT' }],
+    itineraries: legsList.map((legs) => ({ journeys: legs.map((flights) => ({ flights })) })),
+    processingOptions: { pseudoCityCode: PCC },
+  };
+}
+
+function printValidation(data) {
+  for (const it of data.itineraries ?? []) {
+    console.log(`    itinerario ${it.requestedItineraryIndex}: horario ${it.isItineraryValid ? 'válido' : 'no encontrado'}, clase ${it.bookingClassCodeValidation ?? '—'}`);
+  }
+}
+
+console.log(`Sabre ${BASE.replace('https://', '')}, origen ${ORIGIN}, PCC ${PCC ?? '(sin configurar)'}\n`);
+if (!PCC) console.log('! Flight Refresh exige pseudoCityCode: cargá SABRE_REQUEST_PCC en .env.local. Se corre solo Flight Search.\n');
+
 const from = addDays(today, 20);
 const to = addDays(from, 60);
-const originLocation = { locationType: ORIGIN.length === 3 && ['BUE', 'NYC', 'LON', 'PAR', 'SAO', 'RIO', 'TYO', 'CHI', 'MIL', 'ROM'].includes(ORIGIN) ? 'City' : 'Airport', locationCode: ORIGIN };
+const cities = ['BUE', 'NYC', 'LON', 'PAR', 'SAO', 'RIO', 'TYO', 'CHI', 'MIL', 'ROM'];
+const originLocation = { locationType: cities.includes(ORIGIN) ? 'City' : 'Airport', locationCode: ORIGIN };
 
-// 1. Explorar: a cualquier lugar, el más barato por destino.
-const explore = await call('Flight Search (a cualquier lugar, Per Date Range)', '/v1/offers/flightSearch', {
+// 1. Explorar (el mapa): a cualquier lugar, el más barato por destino, con ofertas completas.
+const explore = await call('Flight Search (a cualquier lugar, Per Date Range, ofertas completas)', '/v1/offers/flightSearch', {
   departureLocation: originLocation,
   departureDateRange: { fromDate: from, toDate: to },
   lengthsOfStay: [7],
-  processingOptions: { publicContentPointOfSaleCountry: 'US', returnMode: 'Per Date Range', returnOffersPerLengthOfStay: false },
+  processingOptions: { publicContentPointOfSaleCountry: 'US', returnMode: 'Per Date Range', returnOffersPerLengthOfStay: false, returnFullOffers: true },
   ...(PCC ? { configuration: { customerCode: PCC } } : {}),
 });
-const journeysById = new Map((explore.data.journeys ?? []).map((j) => [j.id, j]));
-const cheapest = [...(explore.data.offers ?? [])].sort((a, b) => Number(a.totalPrice?.amount) - Number(b.totalPrice?.amount))[0];
-const firstJourney = cheapest && journeysById.get(cheapest.journeyRefs?.[0]);
-const destination = firstJourney?.destinationAirportCode;
-if (!destination) {
+const cheapest = [...(explore.data.offers ?? [])]
+  .filter((o) => o.items?.length)
+  .sort((a, b) => Number(a.totalPrice?.amount) - Number(b.totalPrice?.amount))[0];
+if (!cheapest) {
   console.log('\nSin destinos en caché para ese origen; probá con SMOKE_ORIGIN=MIA u otro.');
   process.exit(explore.ok ? 0 : 1);
 }
-console.log(`  Destino más barato: ${destination} (${cheapest.totalPrice.amount} ${cheapest.totalPrice.currencyCode})`);
+const cheapestLegs = flightsOf(explore.data, cheapest);
+const departure = cheapestLegs[0][0].departureAirportCode;
+const destination = cheapestLegs[0].at(-1).arrivalAirportCode;
+console.log(`  Destino más barato: ${destination} (${cheapest.totalPrice.amount} ${cheapest.totalPrice.currencyCode}), sale ${cheapestLegs[0][0].departureDate}`);
 
-// 2. Calendario: Per Day con ofertas completas para ese par.
+// 2. Refresh del pin más barato: lo mismo que "Validar con Flight Refresh" en la tarjeta.
+if (PCC) {
+  const single = await call(`Flight Refresh (${departure}-${destination}, 1 itinerario)`, '/v1/offers/flightRefresh', refreshRequest([cheapestLegs]));
+  printValidation(single.data);
+}
+
+// 3. Calendario: Per Day con ofertas completas para ese par.
 const calendar = await call('Flight Search (calendario Per Day, ofertas completas)', '/v1/offers/flightSearch', {
-  departureLocation: originLocation,
+  departureLocation: { locationType: 'Airport', locationCode: departure },
   arrivalLocations: [{ locationFilter: 'Limit To', location: { locationType: 'Airport', locationCode: destination } }],
   departureDateRange: { fromDate: from, toDate: addDays(from, 13) },
   lengthsOfStay: [7],
   processingOptions: { publicContentPointOfSaleCountry: 'US', returnMode: 'Per Day', returnFullOffers: true },
-});
-const dayOffers = (calendar.data.offers ?? []).filter((o) => o.items?.length);
-if (!dayOffers.length) process.exit(0);
-
-// 3. Refresh: validar hasta 10 fechas en un solo request (misma ruta).
-const itineraries = dayOffers.slice(0, 10).map((o) => ({ journeys: flightsOf(calendar.data, o).map((flights) => ({ flights })) }));
-const first = itineraries[0].journeys;
-await call('Flight Refresh (validación en lote)', '/v1/offers/flightRefresh', {
-  journeys: first.map((j) => ({
-    departureLocation: { airportCode: j.flights[0].departureAirportCode },
-    arrivalLocation: { airportCode: j.flights.at(-1).arrivalAirportCode },
-    departureDate: j.flights[0].departureDate,
-  })),
-  travelers: [{ passengerTypeCode: 'ADT' }],
-  itineraries: itineraries.filter((it) => it.journeys[0].flights[0].departureAirportCode === first[0].flights[0].departureAirportCode),
-  ...(PCC ? { processingOptions: { pseudoCityCode: PCC } } : {}),
+  ...(PCC ? { configuration: { customerCode: PCC } } : {}),
 });
 
-// 4. Shop en vivo para la fecha más barata.
-const best = [...dayOffers].sort((a, b) => Number(a.totalPrice.amount) - Number(b.totalPrice.amount))[0];
-const bestLegs = flightsOf(calendar.data, best);
-const dep = bestLegs[0][0].departureDate;
-const ret = bestLegs[1]?.[0]?.departureDate;
-const shop = await call(`Flight Shop (${bestLegs[0][0].departureAirportCode}-${destination}, ${dep}${ret ? ` / ${ret}` : ''})`, '/v1/offers/flightShop', {
-  journeys: [
-    { departureLocation: { airportCode: bestLegs[0][0].departureAirportCode }, arrivalLocation: { airportCode: destination }, departureDate: dep },
-    ...(ret ? [{ departureLocation: { airportCode: destination }, arrivalLocation: { airportCode: bestLegs[0][0].departureAirportCode }, departureDate: ret }] : []),
-  ],
-  travelers: [{ passengerTypeCode: 'ADT' }],
-  retailing: { returnOfferAttributes: ['Baggage', 'Flexibility'] },
-  processingOptions: { limitNumberOfOffers: 20, ...(PCC ? { pseudoCityCode: PCC } : {}) },
-});
+// 4. Refresh de varias fechas: un request por ruta y fechas (antes se mandaban juntas y Sabre
+//    respondía "Flight and requested journey departure dates must match"). Solo 2 para cuidar el volumen.
+if (PCC) {
+  const groups = new Map();
+  for (const offer of calendar.data.offers ?? []) {
+    if (!offer.items?.length) continue;
+    const legs = flightsOf(calendar.data, offer);
+    const key = legs.map((flights) => `${flights[0].departureAirportCode}-${flights.at(-1).arrivalAirportCode}-${flights[0].departureDate}`).join('|');
+    groups.set(key, [...(groups.get(key) ?? []), legs]);
+  }
+  for (const [key, legsList] of [...groups].slice(0, 2)) {
+    const res = await call(`Flight Refresh (${key}, ${legsList.length} itinerario${legsList.length > 1 ? 's' : ''})`, '/v1/offers/flightRefresh', refreshRequest(legsList.slice(0, 100)));
+    printValidation(res.data);
+  }
+}
 
-// 5. Check por payload sobre la tarifa de caché (el camino Search → Check).
-await call('Flight Check (payload de la tarifa en caché)', '/v1/offers/flightCheck', {
-  journeys: bestLegs.map((flights) => ({ flights })),
-  travelers: [{ passengerTypeCode: 'ADT' }],
-  retailing: { returnOfferAttributes: ['Baggage', 'Flexibility'] },
-  ...(PCC ? { processingOptions: { pseudoCityCode: PCC } } : {}),
-});
-
-console.log(`\nListo. Shop devolvió ${shop.data.offers?.length ?? 0} ofertas. No se llamó a ningún endpoint de reserva.`);
+console.log(`\n${failures ? `✗ ${failures} llamada(s) con error.` : 'Listo.'} No se llamó a ningún endpoint de reserva.`);
+process.exit(failures ? 1 : 0);

@@ -2,7 +2,7 @@
  * Estado de búsqueda en la URL (compartible y deep-linkeable). Todos los valores son
  * strings planos (`?o=BUE&dm=theme&dv=Beach,Skiing&los=6,7,8`), no JSON.
  */
-import { plusDays, today, type DestinationMode, type OriginMode, type SearchCriteria, type ShopSelection, type Travelers } from '@/api/mappers';
+import { plusDays, today, type DestinationMode, type OriginMode, type SearchCriteria, type Travelers } from '@/api/mappers';
 
 export type RawSearch = Record<string, string | undefined>;
 
@@ -68,32 +68,6 @@ export function travelersFromSearch(pax?: string): Travelers {
 }
 
 export const travelersToSearch = (t: Travelers) => `${t.ADT}-${t.CNN}-${t.INF}`;
-
-export function shopFromSearch(s: RawSearch): ShopSelection | undefined {
-  if (!s.o || !s.d || !s.dep) return undefined;
-  const cabins = ['Economy', 'Premium Economy', 'Business', 'First'] as const;
-  return {
-    origin: s.o,
-    destination: s.d,
-    departDate: s.dep,
-    returnDate: s.ret,
-    travelers: travelersFromSearch(s.pax),
-    cabin: cabins.find((c) => c === s.cab) ?? 'Economy',
-    nonStop: s.ns === '1',
-  };
-}
-
-export function shopToSearch(sel: ShopSelection): RawSearch {
-  return {
-    o: sel.origin,
-    d: sel.destination,
-    dep: sel.departDate,
-    ret: sel.returnDate,
-    pax: travelersToSearch(sel.travelers),
-    cab: sel.cabin === 'Economy' ? undefined : sel.cabin,
-    ns: sel.nonStop ? '1' : undefined,
-  };
-}
 
 /** Serialización plana para TanStack Router. */
 export function parseSearch(searchStr: string): RawSearch {

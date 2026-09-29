@@ -1,13 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  REFRESH_MISSING_PCC,
   buildCalendarSearchRequest,
-  buildCheckOfferRequest,
-  buildCheckPayloadRequest,
   buildExploreSearchRequest,
   buildMonthOverviewRequest,
   buildRefreshRequests,
-  buildReshopRequest,
-  buildShopRequest,
   type SearchCriteria,
 } from '../mappers';
 import { normalizeOffers } from '../normalize';
@@ -68,30 +65,44 @@ describe('Flight Search requests', () => {
   });
 });
 
-describe('Shop, Refresh, Check y Reshop', () => {
+describe('Flight Refresh', () => {
   const offers = normalizeOffers(SEARCH_FULL_OFFER_RESPONSE as MosaicResponse);
   const travelers = { ADT: 2, CNN: 1, INF: 0 };
 
-  it('Flight Shop ida y vuelta', () => {
-    const req = buildShopRequest({ origin: 'BUE', destination: 'MAD', departDate: '2026-11-10', returnDate: '2026-11-20', travelers, cabin: 'Economy' }, market);
-    expectValid('flightshop', 'FlightShopRequest', req);
-    expect(req.travelers).toHaveLength(3);
+  it('cumple el spec', () => {
+    for (const g of buildRefreshRequests(offers, travelers, market)) expectValid('flightrefresh', 'FlightRefreshRequest', g.request);
   });
 
-  it('Flight Refresh agrupa por ruta', () => {
+  // Regresión: Sabre responde "Flight and requested journey departure dates must match" si en
+  // un mismo request hay itinerarios de fechas distintas a las de `journeys`.
+  it('arma un request por ruta + fechas y las fechas de journeys coinciden con cada itinerario', () => {
     const groups = buildRefreshRequests(offers, travelers, market);
-    expect(groups.length).toBeGreaterThan(0);
-    for (const g of groups) expectValid('flightrefresh', 'FlightRefreshRequest', g.request);
+    // Las dos ofertas de la fixture van a Madrid en fechas distintas: dos requests.
+    expect(groups).toHaveLength(2);
+    for (const { request } of groups) {
+      request.journeys.forEach((journey, j) => {
+        for (const itinerary of request.itineraries) {
+          expect(itinerary.journeys[j].flights[0].departureDate).toBe(journey.departureDate);
+          expect(itinerary.journeys[j].flights[0].departureAirportCode).toBe((journey.departureLocation as { airportCode: string }).airportCode);
+        }
+      });
+    }
   });
 
-  it('Flight Check por payload y por offerItemIds', () => {
-    expectValid('flightcheck', 'FlightCheckRequest', buildCheckPayloadRequest(offers[0], travelers, market));
-    expectValid('flightcheck', 'FlightCheckRequest', buildCheckOfferRequest(offers[0], travelers, market));
+  it('agrupa en un solo request los itinerarios de la misma ruta y fechas', () => {
+    const clone = { ...offers[0], id: 'otro' };
+    const groups = buildRefreshRequests([offers[0], clone], travelers, market);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].offerIds).toEqual([offers[0].id, 'otro']);
+    expect(groups[0].request.itineraries).toHaveLength(2);
   });
 
-  it('Flight Reshop por PNR y por tickets', () => {
-    const common = { origin: 'DFW', destination: 'LAX', departDate: '2026-11-26', flexibleDates: true };
-    expectValid('flightreshop', 'FlightReshopRequest', buildReshopRequest({ ...common, reference: 'glebny', referenceType: 'booking' }, market));
-    expectValid('flightreshop', 'FlightReshopRequest', buildReshopRequest({ ...common, reference: '0012972101507', referenceType: 'ticket', returnDate: '2026-11-30' }, market));
+  it('manda siempre el pseudoCityCode y falla claro si no hay PCC', () => {
+    expect(buildRefreshRequests(offers, travelers, market)[0].request.processingOptions).toEqual({ pseudoCityCode: 'AB12' });
+    expect(() => buildRefreshRequests(offers, travelers, { ...market, pcc: undefined })).toThrow(REFRESH_MISSING_PCC);
+  });
+
+  it('ignora ofertas solo precio (sin vuelos para validar)', () => {
+    expect(buildRefreshRequests([{ ...offers[0], priceOnly: true }], travelers, market)).toEqual([]);
   });
 });

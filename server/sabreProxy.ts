@@ -5,8 +5,8 @@
  * `SABRE_BASE_URL` (PROD por defecto) agregando `Authorization: Bearer <SABRE_TOKEN>`.
  * El token vive en `.env.local` sin prefijo VITE_, así nunca llega al bundle.
  *
- * Reglas del proyecto (ver CLAUDE.md): PROD, SOLO SHOPPING. Todo lo que no esté en
- * ALLOWED_ROUTES responde 403 sin llegar a Sabre.
+ * Reglas del proyecto (ver CLAUDE.md): PROD, solo Flight Search y Flight Refresh (más Geo
+ * Autocomplete para la barra). Todo lo que no esté en ALLOWED_ROUTES responde 403 sin llegar a Sabre.
  *
  * Docs:
  * - Token v2: https://developer.sabre.com/rest-api/oauth-token-create-rest-api/v2
@@ -29,9 +29,6 @@ export interface AllowedRoute {
 export const ALLOWED_ROUTES: readonly AllowedRoute[] = [
   { method: 'POST', path: '/v1/offers/flightSearch', api: 'flightSearch', recordable: true },
   { method: 'POST', path: '/v1/offers/flightRefresh', api: 'flightRefresh', recordable: true },
-  { method: 'POST', path: '/v1/offers/flightShop', api: 'flightShop', recordable: true },
-  { method: 'POST', path: '/v1/offers/flightCheck', api: 'flightCheck', recordable: true },
-  { method: 'POST', path: '/v1/offers/flightReshop', api: 'flightReshop', recordable: false },
   { method: 'GET', path: '/v2/geo/autocomplete', api: 'geoAutocomplete', recordable: true },
 ];
 
@@ -148,12 +145,12 @@ export function createSabreHandler(options: SabreHandlerOptions) {
 
     const route = findAllowedRoute(req.method, url.pathname);
     if (!route) {
-      log(`[sabre] BLOQUEADO ${req.method} ${url.pathname} (fuera de la allowlist de shopping)`);
+      log(`[sabre] BLOQUEADO ${req.method} ${url.pathname} (fuera de la allowlist)`);
       proxyError(
         res,
         403,
         'ENDPOINT_NOT_ALLOWED',
-        `${req.method} ${url.pathname} no está permitido: este proyecto solo hace shopping en PROD (ver CLAUDE.md).`,
+        `${req.method} ${url.pathname} no está permitido: esta demo solo usa Flight Search y Flight Refresh (ver CLAUDE.md).`,
       );
       return;
     }

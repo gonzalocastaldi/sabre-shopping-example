@@ -8,7 +8,7 @@ import MapGL, { Layer, Marker, NavigationControl, Source, type MapRef } from 're
 import { setWorkerUrl, type StyleSpecification } from 'maplibre-gl';
 // MapLibre v6 carga su worker por URL relativa; al pre-empaquetar, Vite la rompe. Se la damos explícita.
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { getPlace, placeLabel } from '@/data/geo';
 import { cx, formatMoney } from '@/ui/primitives';
 
@@ -31,6 +31,10 @@ interface Props {
   /** Open origin: los puntos son orígenes y la ruta va desde ellos al destino fijo. */
   reverse?: boolean;
   labelCount?: number;
+  /** Margen izquierdo extra al encuadrar (lugar reservado para la tarjeta del destino). */
+  padLeft?: number;
+  /** Elemento que tapa parte del mapa (la tarjeta): si cubre el pin elegido, el mapa se corre. */
+  overlayRef?: RefObject<HTMLElement | null>;
   className?: string;
 }
 
@@ -84,7 +88,7 @@ export function greatCircle(a: [number, number], b: [number, number], steps = 64
 
 const prefersReducedMotion = () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-export function ExploreMap({ origins, points, selected, hovered, onSelect, onHover, reverse, labelCount = 28, className }: Props) {
+export function ExploreMap({ origins, points, selected, hovered, onSelect, onHover, reverse, labelCount = 28, padLeft = 0, overlayRef, className }: Props) {
   const mapRef = useRef<MapRef>(null);
   const colors = useThemeColors();
   const [loaded, setLoaded] = useState(false);
@@ -137,9 +141,44 @@ export function ExploreMap({ origins, points, selected, hovered, onSelect, onHov
         [Math.min(...lons), Math.max(-60, Math.min(...lats))],
         [Math.max(...lons), Math.min(75, Math.max(...lats))],
       ],
-      { padding: { top: 60, bottom: 40, left: 40, right: 40 }, maxZoom: 5, duration: prefersReducedMotion() ? 0 : 900 },
+      // top: lugar para los avisos de estado que flotan arriba y para la etiqueta del pin más al norte.
+      { padding: { top: 100, bottom: 40, left: 40 + padLeft, right: 40 }, maxZoom: 5, duration: prefersReducedMotion() ? 0 : 900 },
     );
-  }, [loaded, located, originPlaces]);
+  }, [loaded, located, originPlaces, padLeft]);
+
+  // Si la tarjeta tapa el pin elegido (mobile, o después de mover el mapa), se lo lleva al
+  // centro de la zona libre: a la derecha de la tarjeta en desktop, arriba de ella en mobile.
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    const place = selected ? getPlace(selected) : undefined;
+    if (!map || !loaded || !place) return;
+    const reveal = () => {
+      const box = map.getContainer().getBoundingClientRect();
+      const card = overlayRef?.current?.getBoundingClientRect();
+      // top: debajo de los avisos de estado que flotan arriba a la izquierda.
+      const free = { left: 0, top: 56, right: box.width, bottom: box.height };
+      if (card) {
+        if (card.width < box.width * 0.6) free.left = card.right - box.left;
+        else free.bottom = card.top - box.top;
+      }
+      const pt = map.project([place.lon, place.lat]);
+      // La etiqueta del pin queda por encima del punto: más margen arriba.
+      if (pt.x > free.left + 40 && pt.x < free.right - 40 && pt.y > free.top + 48 && pt.y < free.bottom - 12) return;
+      map.panBy([pt.x - (free.left + free.right) / 2, pt.y - (free.top + free.bottom) / 2 - 20], { duration: prefersReducedMotion() ? 0 : 600 });
+    };
+    // Se espera a que el mapa quede quieto (encuadre de una búsqueda nueva, o el click sobre el
+    // pin, que MapLibre todavía está procesando) y a un frame más: si no, el paneo se corta.
+    let frame = 0;
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => (map.isMoving() ? map.once('moveend', schedule) : reveal()));
+    };
+    schedule();
+    return () => {
+      cancelAnimationFrame(frame);
+      map.off('moveend', schedule);
+    };
+  }, [loaded, selected, overlayRef]);
 
   // Arco hacia el destino activo: se dibuja progresivamente (respeta reduced motion).
   const target = hovered ?? selected;
@@ -195,8 +234,9 @@ export function ExploreMap({ origins, points, selected, hovered, onSelect, onHov
 
   return (
     // Absoluto dentro de un padre `relative` con alto mínimo: así el alto es definido también
-    // en layouts de columna (mobile), donde height: 100% resolvería a 0.
-    <div role="region" aria-label="Mapa de destinos con precios" className={cx('absolute inset-0 overflow-hidden', className)}>
+    // en layouts de columna (mobile), donde height: 100% resolvería a 0. `overflow-clip` (no
+    // `hidden`): así el foco de un pin no puede desplazar el contenido del mapa.
+    <div role="region" aria-label="Mapa de destinos con precios" className={cx('absolute inset-0 overflow-clip', className)}>
       <MapGL
         ref={mapRef}
         mapStyle={style}
@@ -223,9 +263,10 @@ export function ExploreMap({ origins, points, selected, hovered, onSelect, onHov
           const intensity = priciest > cheapest ? (p.amount - cheapest) / (priciest - cheapest) : 0;
           const priceText = formatMoney(p.amount, p.currency, { compact: true });
           return (
-            <Marker key={p.code} longitude={p.place.lon} latitude={p.place.lat} anchor={showLabel ? 'bottom' : 'center'} style={{ zIndex: active ? 3 : showLabel ? 2 : 1 }}>
+            <Marker key={p.code} longitude={p.place.lon} latitude={p.place.lat} anchor={showLabel ? 'bottom' : 'center'} style={{ zIndex: active ? 5 : showLabel ? 2 : 1 }}>
               <button
                 type="button"
+                data-map-code={p.code}
                 onClick={() => onSelect?.(p.code)}
                 onMouseEnter={() => onHover?.(p.code)}
                 onMouseLeave={() => onHover?.(undefined)}
@@ -256,7 +297,7 @@ export function ExploreMap({ origins, points, selected, hovered, onSelect, onHov
         })}
 
         {originPlaces.map((o) => (
-          <Marker key={`o-${o.code}`} longitude={o.lon} latitude={o.lat} anchor="center" style={{ zIndex: 4 }}>
+          <Marker key={`o-${o.code}`} longitude={o.lon} latitude={o.lat} anchor="center" style={{ zIndex: 4, pointerEvents: 'none' }}>
             <span className="flex items-center gap-1.5" aria-hidden="true">
               <span className="size-3.5 rounded-full border-[3px] border-land bg-cyan shadow" />
               <span className="rounded bg-ink px-1.5 py-0.5 font-display text-sm font-semibold text-paper" translate="no">

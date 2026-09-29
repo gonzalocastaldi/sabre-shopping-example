@@ -6,20 +6,15 @@ import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { marketOf, useSettings } from '@/app/settings';
 import { searchPlaces, type Place } from '@/data/geo';
-import { sabreRequest } from './client';
+import { SabreApiError, sabreRequest } from './client';
 import {
   buildCalendarSearchRequest,
-  buildCheckRequest,
   buildExploreSearchRequest,
   buildMonthOverviewRequest,
   buildRefreshRequests,
-  buildReshopRequest,
-  buildShopRequest,
   isOpenOrigin,
-  type ReshopForm,
   type SearchCriteria,
   type MarketSettings,
-  type ShopSelection,
   type Travelers,
 } from './mappers';
 import type { FlightRefreshResponse, MosaicResponse } from './mosaic';
@@ -32,9 +27,8 @@ const STALE = 10 * 60_000;
  * Mercado efectivo de la demo. Si no cargaste un PCC en Ajustes, se hereda el del proxy
  * (SABRE_REQUEST_PCC de .env.local), que es lo que ya documenta .env.example.
  *
- * No es cosmético: Flight Check exige pseudoCityCode. Sin él responde HTTP 200 con solo
- * "timestamp", sin errors ni warnings, y la pantalla de revisión queda vacía sin explicación.
- * Verificado en CERT con la misma oferta: sin PCC 0 ofertas, con PCC 1.
+ * No es cosmético: Flight Refresh exige pseudoCityCode ("required data elements
+ * (passengerTypeCode and pseudoCityCode)", https://developer.sabre.com/rest-api/flightrefresh-api/v1/index.html).
  */
 function useMarket(): MarketSettings {
   const market = marketOf(useSettings());
@@ -105,34 +99,13 @@ export function useMonthOverview(params: { origin: string; destination: string; 
   });
 }
 
-export function useFlightShop(selection: ShopSelection | undefined) {
-  const market = useMarket();
-  const request = selection ? buildShopRequest(selection, market) : undefined;
-  return useQuery({
-    queryKey: ['flightShop', request],
-    enabled: Boolean(request),
-    staleTime: STALE,
-    queryFn: ({ signal }) => sabreRequest<MosaicResponse>('flightShop', request, { signal }),
-    select: (res) => ({ response: res, offers: normalizeOffers(res) }),
-  });
-}
-
-export function useFlightCheck(offer: TripOffer | undefined, travelers: Travelers) {
-  const market = useMarket();
-  const request = offer ? buildCheckRequest(offer, travelers, market) : undefined;
-  return useQuery({
-    queryKey: ['flightCheck', offer?.id, request],
-    enabled: Boolean(request),
-    staleTime: 5 * 60_000,
-    retry: false,
-    queryFn: ({ signal }) => sabreRequest<MosaicResponse>('flightCheck', request, { signal }),
-    select: (res) => ({ response: res, offers: normalizeOffers(res) }),
-  });
-}
-
 export type RefreshResult = NonNullable<FlightRefreshResponse['itineraries']>[number];
 
-/** Valida en lote (un request por ruta). Devuelve offerId → resultado. */
+/**
+ * Flight Refresh: un request por ruta + fechas (ver buildRefreshRequests). Devuelve
+ * offerId → resultado. Una respuesta sin itinerarios ni errores se trata como error,
+ * para que nunca quede una validación "silenciosa".
+ */
 export function useFlightRefresh() {
   const market = useMarket();
   return useMutation({
@@ -142,23 +115,18 @@ export function useFlightRefresh() {
       await Promise.all(
         groups.map(async ({ request, offerIds }) => {
           const res = await sabreRequest<FlightRefreshResponse>('flightRefresh', request);
-          for (const it of res.itineraries ?? []) {
+          if (!res.itineraries?.length) {
+            throw new SabreApiError('flightRefresh', 200, [
+              { type: 'EMPTY_RESPONSE', description: 'Sabre devolvió una respuesta vacía, sin itinerarios ni errores. Revisá el PCC y el request en el API Inspector.' },
+            ]);
+          }
+          for (const it of res.itineraries) {
             const id = offerIds[it.requestedItineraryIndex];
             if (id) results.set(id, it);
           }
         }),
       );
       return results;
-    },
-  });
-}
-
-export function useFlightReshop() {
-  const market = useMarket();
-  return useMutation({
-    mutationFn: async (form: ReshopForm) => {
-      const res = await sabreRequest<MosaicResponse>('flightReshop', buildReshopRequest(form, market), { sensitive: true });
-      return { response: res, offers: normalizeOffers(res) };
     },
   });
 }

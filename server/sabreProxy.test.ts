@@ -28,7 +28,12 @@ describe('allowlist', () => {
   it('permite solo endpoints de shopping', () => {
     expect(findAllowedRoute('POST', '/v1/offers/flightSearch')?.api).toBe('flightSearch');
     expect(findAllowedRoute('GET', '/v2/geo/autocomplete')?.api).toBe('geoAutocomplete');
+    expect(findAllowedRoute('POST', '/v1/offers/flightRefresh')?.api).toBe('flightRefresh');
     expect(findAllowedRoute('POST', '/v1/trip/orders/createBooking')).toBeUndefined();
+    // Fuera del alcance de la demo: solo Search y Refresh.
+    for (const path of ['/v1/offers/flightShop', '/v1/offers/flightCheck', '/v1/offers/flightReshop']) {
+      expect(findAllowedRoute('POST', path)).toBeUndefined();
+    }
     expect(findAllowedRoute('GET', '/v1/offers/flightSearch')).toBeUndefined();
   });
 
@@ -64,7 +69,7 @@ describe('token', () => {
     const fetchImpl = okFetch();
     const handler = createSabreHandler({ getEnv: () => ({}), fetchImpl, log: () => {} });
     const { res, json } = fakeRes();
-    await handler(fakeReq('POST', '/v1/offers/flightShop', {}), res);
+    await handler(fakeReq('POST', '/v1/offers/flightSearch', {}), res);
     expect(res.statusCode).toBe(401);
     expect(json().errors[0].description).toMatch(/SABRE_TOKEN/);
     expect(fetchImpl).not.toHaveBeenCalled();
@@ -78,7 +83,7 @@ describe('token', () => {
     });
     const handler = createSabreHandler({ getEnv: () => env, fetchImpl: fetchImpl as unknown as typeof fetch, log: () => {} });
     const { res } = fakeRes();
-    await handler(fakeReq('POST', '/v1/offers/flightCheck', {}), res);
+    await handler(fakeReq('POST', '/v1/offers/flightRefresh', {}), res);
     expect(res.statusCode).toBe(200);
     const last = fetchImpl.mock.calls.at(-1) as unknown as [string, RequestInit];
     expect((last[1].headers as Record<string, string>).Authorization).toBe('Bearer nuevo');

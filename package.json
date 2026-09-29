@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "OTA de demo (Galaxy Travel) que consume las APIs de shopping de Sabre Mosaic: Flight Search, Refresh, Shop, Check y Reshop.",
+  "description": "OTA de demo (Galaxy Travel) que consume las APIs de shopping de Sabre Mosaic: Flight Search y Flight Refresh.",
   "scripts": {
     "dev": "vite",
     "dev:mock": "VITE_API_MODE=mock vite",

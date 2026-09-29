@@ -6,12 +6,8 @@ import { addDays, format } from 'date-fns';
 import { getCity } from '@/data/geo';
 import type { Leg, TripOffer } from './normalize';
 import type {
-  FlightCheckOfferRequest,
-  FlightCheckPayloadRequest,
   FlightRefreshRequest,
-  FlightReshopRequest,
   FlightSearchRequest,
-  FlightShopRequest,
   PassengerTypeCode,
   RegionCode,
   SearchLocation,
@@ -125,8 +121,8 @@ function dateWindow(c: SearchCriteria): { range: { fromDate: string; toDate?: st
 }
 
 /**
- * Explorar (mapa/lista): el más barato por destino en todo el rango ("Per Date Range",
- * un solo precio por destino). Mismo patrón que el ejemplo oficial OpenDestinationWithMapModeRequest.
+ * Explorar (mapa): el más barato por destino en todo el rango ("Per Date Range", una oferta
+ * por destino), como el ejemplo oficial OpenDestinationWithMapModeRequest pero con ofertas completas.
  */
 export function buildExploreSearchRequest(c: SearchCriteria, market: MarketSettings): FlightSearchRequest {
   const { range, los } = dateWindow(c);
@@ -139,7 +135,8 @@ export function buildExploreSearchRequest(c: SearchCriteria, market: MarketSetti
       publicContentPointOfSaleCountry: market.pointOfSale,
       returnMode: 'Per Date Range',
       returnOffersPerLengthOfStay: false,
-      returnFullOffers: false,
+      // Ofertas completas: cada pin del mapa trae vuelos y clase tarifaria para Flight Refresh.
+      returnFullOffers: true,
       returnLowestNonStopFare: c.nonStop || undefined,
       budget: c.budget ? { maximumTotalFareAmount: c.budget, currencyCode: market.currency } : undefined,
     },
@@ -149,7 +146,7 @@ export function buildExploreSearchRequest(c: SearchCriteria, market: MarketSetti
 
 /**
  * Calendario de tarifas para un par origen-destino: el más barato por día ("Per Day")
- * con ofertas completas, para poder validar con Refresh y revalidar con Check.
+ * con ofertas completas (vuelos y clase tarifaria de cada día).
  */
 export function buildCalendarSearchRequest(
   params: { origin: string; destination: string; fromDate: string; toDate: string; lengthOfStay?: number; nonStop?: boolean; budget?: number },
@@ -197,43 +194,7 @@ export function expandTravelers(t: Travelers): { passengerTypeCode: PassengerTyp
   return (['ADT', 'CNN', 'INF'] as const).flatMap((ptc) => Array.from({ length: t[ptc] }, () => ({ passengerTypeCode: ptc })));
 }
 
-export interface ShopSelection {
-  origin: string;
-  destination: string;
-  departDate: string;
-  returnDate?: string;
-  travelers: Travelers;
-  cabin: 'Economy' | 'Premium Economy' | 'Business' | 'First';
-  nonStop?: boolean;
-}
-
-const shopLocation = (code: string) => (getCity(code) ? { cityCode: code } : { airportCode: code });
-
-export function buildShopRequest(s: ShopSelection, market: MarketSettings): FlightShopRequest {
-  const journeys: FlightShopRequest['journeys'] = [
-    { departureLocation: shopLocation(s.origin), arrivalLocation: shopLocation(s.destination), departureDate: s.departDate },
-  ];
-  if (s.returnDate) {
-    journeys.push({ departureLocation: shopLocation(s.destination), arrivalLocation: shopLocation(s.origin), departureDate: s.returnDate });
-  }
-  return compact({
-    journeys,
-    travelers: expandTravelers(s.travelers),
-    route: s.nonStop ? { maximumNumberOfStops: 0 } : undefined,
-    fare: {
-      currencyCode: market.currency,
-      cabin: { logic: 'Jump Cabin', name: s.cabin },
-      returnTaxBreakdown: true,
-    },
-    retailing: {
-      returnOfferAttributes: ['Baggage', 'Flexibility', 'Carbon Emissions'],
-      returnAdditionalOffers: { numberOfAdditionalOffers: 3 },
-    },
-    processingOptions: compact({ pseudoCityCode: market.pcc, limitNumberOfOffers: 60 }),
-  }) as FlightShopRequest;
-}
-
-/** Vuelos de una oferta en el formato de itinerario de Refresh/Check (ItineraryJourney). */
+/** Vuelos de una oferta en el formato de itinerario de Flight Refresh (ItineraryJourney). */
 export function toItineraryJourneys(offer: TripOffer) {
   return offer.legs.map((leg) => ({
     flights: leg.segments.map((s) =>
@@ -252,18 +213,28 @@ export function toItineraryJourneys(offer: TripOffer) {
   }));
 }
 
-const routeKey = (legs: Leg[]) => legs.map((l) => `${l.from}-${l.to}`).join('|');
+/**
+ * Clave de agrupación para Flight Refresh: ruta Y fecha de cada tramo.
+ * Sabre exige que el `departureDate` de cada journey del request coincida con la fecha del
+ * primer vuelo de ese tramo en cada itinerario; si no, responde
+ * "Flight and requested journey departure dates must match".
+ */
+const refreshKey = (legs: Leg[]) => legs.map((l) => `${l.from}-${l.to}-${l.segments[0]?.departDate ?? l.departDate}`).join('|');
+
+export const REFRESH_MISSING_PCC =
+  'Flight Refresh exige pseudoCityCode: configurá SABRE_REQUEST_PCC en .env.local o el PCC en el panel de conexión.';
 
 /**
- * Flight Refresh exige que todos los aeropuertos de cada itinerario pertenezcan a las
- * ciudades del journey de nivel superior, así que agrupamos por ruta (máx. 100 por request).
- * https://developer.sabre.com/rest-api/flightrefresh-api/v1 (User Guide: "Specifying the journey is mandatory")
+ * Arma los requests de Flight Refresh: uno por ruta + fechas, con hasta 100 itinerarios
+ * cada uno, y el `pseudoCityCode` que la API marca como obligatorio.
+ * https://developer.sabre.com/rest-api/flightrefresh-api/v1
  */
 export function buildRefreshRequests(offers: TripOffer[], travelers: Travelers, market: MarketSettings): { request: FlightRefreshRequest; offerIds: string[] }[] {
+  if (!market.pcc) throw new Error(REFRESH_MISSING_PCC);
   const groups = new Map<string, TripOffer[]>();
   for (const o of offers) {
-    if (o.priceOnly || !o.legs.length) continue;
-    const key = routeKey(o.legs);
+    if (o.priceOnly || !o.legs.length || o.legs.some((l) => !l.segments.length)) continue;
+    const key = refreshKey(o.legs);
     groups.set(key, [...(groups.get(key) ?? []), o]);
   }
   const requests: { request: FlightRefreshRequest; offerIds: string[] }[] = [];
@@ -273,78 +244,20 @@ export function buildRefreshRequests(offers: TripOffer[], travelers: Travelers, 
       const first = chunk[0];
       requests.push({
         offerIds: chunk.map((o) => o.id),
-        request: compact({
-          journeys: first.legs.map((l) => ({ departureLocation: { airportCode: l.from }, arrivalLocation: { airportCode: l.to }, departureDate: l.departDate })),
+        request: {
+          journeys: first.legs.map((l) => ({
+            departureLocation: { airportCode: l.segments[0].from },
+            arrivalLocation: { airportCode: l.segments[l.segments.length - 1].to },
+            departureDate: l.segments[0].departDate,
+          })),
           travelers: expandTravelers(travelers),
           itineraries: chunk.map((o) => ({ journeys: toItineraryJourneys(o) })),
-          processingOptions: market.pcc ? { pseudoCityCode: market.pcc } : undefined,
-        }) as FlightRefreshRequest,
+          processingOptions: { pseudoCityCode: market.pcc },
+        } as FlightRefreshRequest,
       });
     }
   }
   return requests;
-}
-
-/** Flight Check por payload (contenido ATPCO, p. ej. ofertas que vienen de la caché de Search). */
-export function buildCheckPayloadRequest(offer: TripOffer, travelers: Travelers, market: MarketSettings): FlightCheckPayloadRequest {
-  return compact({
-    journeys: toItineraryJourneys(offer),
-    travelers: expandTravelers(travelers),
-    fare: compact({
-      currencyCode: market.currency,
-      validatingAirlineCodes: offer.validatingAirline ? [offer.validatingAirline] : undefined,
-      returnTaxBreakdown: true,
-    }),
-    retailing: {
-      returnOfferAttributes: ['Baggage', 'Flexibility', 'Carbon Emissions'],
-      returnAdditionalOffers: { numberOfAdditionalOffers: 3 },
-    },
-    processingOptions: market.pcc ? { pseudoCityCode: market.pcc } : undefined,
-  }) as FlightCheckPayloadRequest;
-}
-
-/** Flight Check por offerItemIds (ofertas NDC que vienen de Flight Shop). */
-export function buildCheckOfferRequest(offer: TripOffer, travelers: Travelers, market: MarketSettings): FlightCheckOfferRequest {
-  return compact({
-    offerItemIds: offer.offerItemIds,
-    travelers: expandTravelers(travelers),
-    retailing: { returnOfferAttributes: ['Baggage', 'Flexibility', 'Carbon Emissions'] },
-    processingOptions: market.pcc ? { pseudoCityCode: market.pcc } : undefined,
-  }) as FlightCheckOfferRequest;
-}
-
-/** NDC se revalida por offerItemId; el resto (ATPCO/LCC de caché) por payload. */
-export function buildCheckRequest(offer: TripOffer, travelers: Travelers, market: MarketSettings) {
-  return offer.distributionModel === 'NDC' ? buildCheckOfferRequest(offer, travelers, market) : buildCheckPayloadRequest(offer, travelers, market);
-}
-
-export interface ReshopForm {
-  reference: string;
-  referenceType: 'booking' | 'ticket';
-  origin: string;
-  destination: string;
-  departDate: string;
-  returnDate?: string;
-  flexibleDates: boolean;
-}
-
-export function buildReshopRequest(f: ReshopForm, market: MarketSettings): FlightReshopRequest {
-  const loc = (code: string) => (getCity(code) ? { cityCode: code } : { airportCode: code });
-  const journeys: FlightReshopRequest['journeys'] = [{ departureLocation: loc(f.origin), arrivalLocation: loc(f.destination), departureDate: f.departDate }];
-  if (f.returnDate) journeys.push({ departureLocation: loc(f.destination), arrivalLocation: loc(f.origin), departureDate: f.returnDate });
-  const refs =
-    f.referenceType === 'booking'
-      ? { bookingId: f.reference.trim().toUpperCase() }
-      : { tickets: f.reference.split(/[\s,]+/).filter(Boolean).map((number) => ({ number })) };
-  return compact({
-    ...refs,
-    journeys,
-    // ±3 días alrededor de la fecha pedida (máximo permitido: ventana de 6 días).
-    // https://developer.sabre.com/rest-api/flight-reshop-api/1.0 (Date Flexibility)
-    departureDateFlexibility: f.flexibleDates ? { plusMinusDays: 3 } : undefined,
-    retailing: { returnOfferAttributes: ['Baggage', 'Flexibility'] },
-    targetPcc: market.pcc,
-  }) as FlightReshopRequest;
 }
 
 /** Quita claves undefined (el spec no acepta null y los undefined ensucian el Inspector). */

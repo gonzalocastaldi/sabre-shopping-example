@@ -5,10 +5,9 @@
  */
 import { delay, http, HttpResponse, type JsonBodyType } from 'msw';
 import { stableHash } from '@/lib/stableHash';
-import type { FlightCheckRequest, FlightRefreshRequest, FlightReshopRequest, FlightSearchRequest, FlightShopRequest } from '@/api/requests';
+import type { FlightRefreshRequest, FlightSearchRequest } from '@/api/requests';
 import { mockFlightSearch } from './engine/search';
-import { mockFlightCheck, mockFlightShop } from './engine/shop';
-import { mockFlightRefresh, mockFlightReshop, mockGeoAutocomplete } from './engine/other';
+import { mockFlightRefresh, mockGeoAutocomplete } from './engine/other';
 
 const recordings = import.meta.glob<{ response: unknown }>('./recorded/*.json', { import: 'default' });
 
@@ -32,23 +31,21 @@ function handler<TReq>(api: string, path: string, generate: (req: TReq) => unkno
 
 export const handlers = [
   http.get('/api/sabre/_meta', () =>
-    HttpResponse.json({ baseUrl: 'mock', tokenSource: 'mock', pcc: null, recording: false, allowedRoutes: [] }),
+    // El PCC del mock habilita Flight Refresh, que exige pseudoCityCode.
+    HttpResponse.json({ baseUrl: 'mock', tokenSource: 'mock', pcc: 'MOCK', recording: false, allowedRoutes: [] }),
   ),
   handler<FlightSearchRequest>('flightSearch', '/v1/offers/flightSearch', mockFlightSearch, [250, 650]),
   handler<FlightRefreshRequest>('flightRefresh', '/v1/offers/flightRefresh', mockFlightRefresh, [300, 700]),
-  handler<FlightShopRequest>('flightShop', '/v1/offers/flightShop', mockFlightShop, [900, 1800]),
-  handler<FlightCheckRequest>('flightCheck', '/v1/offers/flightCheck', mockFlightCheck, [600, 1200]),
-  handler<FlightReshopRequest>('flightReshop', '/v1/offers/flightReshop', mockFlightReshop, [900, 1600]),
   http.get('/api/sabre/v2/geo/autocomplete', async ({ request }) => {
     const url = new URL(request.url);
     const replay = await recorded('geoAutocomplete', url.search);
     await latency(80, 200);
     return json(replay ?? mockGeoAutocomplete(url.searchParams.get('query') ?? '', url.searchParams.get('category') ?? undefined, Number(url.searchParams.get('limit') ?? 8)), 120);
   }),
-  // Cualquier otra ruta de Sabre: mismo comportamiento que el proxy real (solo shopping).
+  // Cualquier otra ruta de Sabre: mismo comportamiento que el proxy real (allowlist).
   http.all('/api/sabre/*', ({ request }) =>
     HttpResponse.json(
-      { errors: [{ category: 'FORBIDDEN', type: 'ENDPOINT_NOT_ALLOWED', description: `${request.method} ${new URL(request.url).pathname.replace('/api/sabre', '')} no está permitido: este proyecto solo hace shopping.` }] },
+      { errors: [{ category: 'FORBIDDEN', type: 'ENDPOINT_NOT_ALLOWED', description: `${request.method} ${new URL(request.url).pathname.replace('/api/sabre', '')} no está permitido: esta demo solo usa Flight Search y Flight Refresh.` }] },
       { status: 403 },
     ),
   ),

@@ -4,7 +4,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import openapiTS, { astToString } from 'openapi-typescript';
 import YAML from 'yaml';
 
-const SPECS = ['flightsearch', 'flightshop', 'flightcheck', 'flightrefresh', 'flightreshop'];
+const SPECS = ['flightsearch', 'flightrefresh'];
 const OUT_DIR = new URL('../src/api/types/', import.meta.url);
 
 // Algunos specs usan nombres sueltos en discriminator.mapping ("FlightOffer") en vez de un $ref.
