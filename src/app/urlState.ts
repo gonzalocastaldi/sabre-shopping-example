@@ -1,8 +1,8 @@
 /**
  * Estado de búsqueda en la URL (compartible y deep-linkeable). Todos los valores son
- * strings planos (`?o=BUE&dm=theme&dv=Beach,Skiing&los=6,7,8`), no JSON.
+ * strings planos (`?o=BUE&dm=theme&dv=Beach,Skiing&los=8`), no JSON.
  */
-import { plusDays, today, type DestinationMode, type OriginMode, type SearchCriteria, type Travelers } from '@/api/mappers';
+import { MAX_STAY_DAYS, MIN_STAY_DAYS, plusDays, today, type DestinationMode, type OriginMode, type SearchCriteria, type Travelers } from '@/api/mappers';
 
 export type RawSearch = Record<string, string | undefined>;
 
@@ -23,7 +23,8 @@ export function criteriaFromSearch(s: RawSearch): SearchCriteria | undefined {
   if (!origins.length) return undefined;
   const { from, to } = defaultWindow();
   const originMode = (ORIGIN_MODES.includes(s.om as OriginMode) ? s.om : origins.length > 1 ? 'multi' : 'place') as OriginMode;
-  const los = list(s.los).map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 21).slice(0, 21);
+  // Días de viaje (1 a 21). El buscador manda uno solo; se aceptan listas por links viejos.
+  const los = Array.from(new Set(list(s.los).map(Number).filter((n) => Number.isInteger(n) && n >= MIN_STAY_DAYS && n <= MAX_STAY_DAYS)));
   const destinationMode = (DESTINATION_MODES.includes(s.dm as DestinationMode) ? s.dm : 'anywhere') as DestinationMode;
   return {
     originMode,

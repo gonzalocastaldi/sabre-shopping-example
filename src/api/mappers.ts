@@ -22,6 +22,15 @@ export const plusDays = (iso: string, days: number) => isoDate(addDays(new Date(
 /** Máximo que acepta Flight Search: hoy + 330 días. */
 export const SEARCH_WINDOW_DAYS = 330;
 
+/**
+ * Duración del viaje que acepta Flight Search: `lengthsOfStay` es "Array of integers (1-21)",
+ * "Trip duration in days" (días entre la salida de ida y la de vuelta). Cualquier entero del rango.
+ * https://developer.sabre.com/rest-api/flightsearch-api/v1
+ */
+export const MIN_STAY_DAYS = 1;
+export const MAX_STAY_DAYS = 21;
+export const stayDaysBetween = (departDate: string, returnDate: string) => Math.round((Date.parse(returnDate) - Date.parse(departDate)) / 86400000);
+
 export type DestinationMode = 'anywhere' | 'place' | 'country' | 'region' | 'theme';
 export type OriginMode = 'place' | 'multi' | 'country';
 
@@ -111,12 +120,12 @@ function arrivalFilters(c: SearchCriteria): SearchLocationFilter[] | undefined {
 
 function dateWindow(c: SearchCriteria): { range: { fromDate: string; toDate?: string }; los?: number[] } {
   if (c.dateMode === 'exact' && c.departDate) {
-    const los = c.tripType === 'roundtrip' && c.returnDate ? [Math.max(0, Math.round((Date.parse(c.returnDate) - Date.parse(c.departDate)) / 86400000))] : undefined;
+    const los = c.tripType === 'roundtrip' && c.returnDate ? [Math.max(MIN_STAY_DAYS, stayDaysBetween(c.departDate, c.returnDate))] : undefined;
     return { range: { fromDate: c.departDate, toDate: c.departDate }, los };
   }
   return {
     range: { fromDate: c.fromDate, toDate: c.toDate },
-    los: c.tripType === 'roundtrip' ? c.lengthsOfStay.slice(0, 21) : undefined,
+    los: c.tripType === 'roundtrip' ? c.lengthsOfStay.slice(0, MAX_STAY_DAYS) : undefined,
   };
 }
 

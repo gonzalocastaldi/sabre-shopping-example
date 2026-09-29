@@ -4,30 +4,67 @@
  */
 import { Link, useNavigate } from '@tanstack/react-router';
 import { addMonths, format, startOfMonth } from 'date-fns';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { describeError } from '@/api/client';
 import { useCalendarSearch, useMonthOverview } from '@/api/hooks';
-import { plusDays, today, SEARCH_WINDOW_DAYS } from '@/api/mappers';
+import { MAX_STAY_DAYS, MIN_STAY_DAYS, plusDays, today, SEARCH_WINDOW_DAYS } from '@/api/mappers';
 import type { CalendarDay } from '@/api/normalize';
 import { destinationRoute } from '@/app/router';
 import { countryName, getPlace, placeLabel } from '@/data/geo';
 import { ApiSourceTag } from '@/features/devtools/ApiSourceTag';
 import { LegLine, RouteTitle } from '@/features/shared/travel';
 import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
-import { IconButton, Notice, Price, ToggleChip, cx, formatDate, formatDateLong, formatMoney } from '@/ui/primitives';
+import { IconButton, Notice, Price, ToggleChip, cx, formatDate, formatDateLong, formatDays, formatMoney } from '@/ui/primitives';
+import { StayDaysSlider } from '@/ui/StayDaysSlider';
 import { useMediaQuery } from '@/ui/useMediaQuery';
 import { CalendarLegend, FareCalendar } from './FareCalendar';
 
-const STAYS = [2, 3, 5, 7, 10, 14, 21];
 const MONTH_SHORT = new Intl.DateTimeFormat('es', { month: 'short' });
+const DEFAULT_STAY = 7;
+
+/** Días de viaje desde la URL (`los`): entero de 1 a 21; cualquier otra cosa vuelve al default. */
+function stayFromSearch(los?: string) {
+  const n = Number(los);
+  return Number.isInteger(n) && n >= MIN_STAY_DAYS && n <= MAX_STAY_DAYS ? n : DEFAULT_STAY;
+}
 
 export function DestinationPage() {
   const { code } = destinationRoute.useParams();
   const search = destinationRoute.useSearch();
+  // Sin origen no hay default: no se llama a Flight Search y se explica cómo seguir.
+  if (!search.o) return <MissingOrigin code={code} />;
+  return <DestinationCalendar origin={search.o} />;
+}
+
+function MissingOrigin({ code }: { code: string }) {
+  return (
+    <div className="mx-auto w-full max-w-[1440px] px-4 py-5 sm:px-6">
+      <h1 className="text-[36px] sm:text-[44px]">Calendario de tarifas a {placeLabel(code)}</h1>
+      <div className="mt-4 max-w-xl">
+        <Notice
+          tone="info"
+          title="Falta el origen"
+          action={
+            <Link to="/" className="inline-flex h-8 items-center rounded-md border border-line bg-land px-3 text-sm font-medium hover:border-ink/50">
+              Ir al mapa
+            </Link>
+          }
+        >
+          El calendario necesita saber desde dónde salís. Buscá en el mapa y tocá el destino.
+        </Notice>
+      </div>
+    </div>
+  );
+}
+
+function DestinationCalendar({ origin }: { origin: string }) {
+  const { code } = destinationRoute.useParams();
+  const search = destinationRoute.useSearch();
   const navigate = useNavigate({ from: destinationRoute.fullPath });
-  const origin = search.o ?? 'BUE';
   const oneWay = search.los === 'ow';
-  const lengthOfStay = oneWay ? undefined : Number(search.los ?? 7);
+  const lengthOfStay = oneWay ? undefined : stayFromSearch(search.los);
+  // Valor mientras se arrastra el selector; la URL (y la búsqueda) cambia recién al soltar.
+  const [draftStay, setDraftStay] = useState<number>();
   const nonStop = search.ns === '1';
   const wide = useMediaQuery('(min-width: 768px)');
   const monthsShown = wide ? 2 : 1;
@@ -80,22 +117,27 @@ export function DestinationPage() {
         </div>
       </div>
 
-      <fieldset className="mt-5">
-        <legend className="mb-2 text-2xs font-medium text-ink-soft">Noches de estadía (lengthsOfStay)</legend>
-        <div className="flex flex-wrap gap-1.5">
-          {STAYS.map((n) => (
-            <ToggleChip key={n} pressed={lengthOfStay === n} onToggle={() => set({ los: String(n), sel: undefined })}>
-              {n} noches
-            </ToggleChip>
-          ))}
-          <ToggleChip pressed={oneWay} onToggle={() => set({ los: 'ow', sel: undefined })}>
+      <div className="mt-5 flex flex-wrap items-end gap-x-6 gap-y-3">
+        <StayDaysSlider
+          className="w-full max-w-md"
+          label="Duración del viaje (lengthsOfStay)"
+          value={draftStay ?? lengthOfStay ?? DEFAULT_STAY}
+          disabled={oneWay}
+          onChange={setDraftStay}
+          onCommit={(days) => {
+            setDraftStay(undefined);
+            if (days !== lengthOfStay) set({ los: String(days), sel: undefined });
+          }}
+        />
+        <div className="flex flex-wrap gap-1.5 pb-5">
+          <ToggleChip pressed={oneWay} onToggle={() => set({ los: oneWay ? String(DEFAULT_STAY) : 'ow', sel: undefined })}>
             Solo ida
           </ToggleChip>
           <ToggleChip pressed={nonStop} onToggle={() => set({ ns: nonStop ? undefined : '1' })}>
             Incluir tarifa directa
           </ToggleChip>
         </div>
-      </fieldset>
+      </div>
 
       {/* Franja anual: Per Month */}
       <section aria-labelledby="year-title" className="mt-6">
@@ -148,7 +190,7 @@ export function DestinationPage() {
               </h2>
               <p className="text-sm text-ink-soft">
                 Por adulto, en {[...days.values()][0]?.cheapest.price?.currency ?? 'USD'}
-                {oneWay ? ', solo ida' : `, ida y vuelta con ${lengthOfStay} noches`}.
+                {oneWay ? ', solo ida' : `, ida y vuelta de ${formatDays(lengthOfStay!)}`}.
               </p>
             </div>
             <span className="flex-1" />
@@ -198,7 +240,7 @@ export function DestinationPage() {
                 <h2 id="sel-title" className="text-2xl first-letter:uppercase">
                   {formatDateLong(selectedDate!)}
                 </h2>
-                <p className="text-ink-soft">{returnDate && !oneWay ? `Vuelta el ${formatDate(returnDate)}, ${lengthOfStay} noches` : 'Solo ida'}</p>
+                <p className="text-ink-soft">{returnDate && !oneWay ? `Vuelta el ${formatDate(returnDate)}, ${formatDays(lengthOfStay!)}` : 'Solo ida'}</p>
                 <div className="mt-4 flex items-end justify-between gap-3">
                   <div>
                     <Price amount={offer.price!.amount} currency={offer.price!.currency} className="text-[40px] leading-none" />

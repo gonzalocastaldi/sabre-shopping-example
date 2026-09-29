@@ -37,7 +37,7 @@ Hay un modo oscuro derivado: el mapa pasa a "cielo nocturno" (agua `#101A2B`, ti
 ┌──────────────────────────────────────────────────────────────────┐
 │ Galaxy Travel                                    [En vivo] [API] │
 ├──────────────────────────────────────────────────────────────────┤
-│ Desde BUE ┆ A cualquier lugar ┆ Nov–Dic, 7 noches ┆ Opciones ┆ Buscar │ ← tarjeta de embarque
+│ Desde BUE ┆ A cualquier lugar ┆ Nov–Dic, 7 días ┆ Opciones ┆ Buscar │ ← tarjeta de embarque
 ├──────────────────────────────────────────────────────────────────┤
 │ (23 destinos · vía Flight Search)                                │
 │ ┌────────────────────┐                                           │
@@ -53,7 +53,8 @@ Hay un modo oscuro derivado: el mapa pasa a "cielo nocturno" (agua `#101A2B`, ti
 - **Tarjeta del destino:** aparece al tocar un pin (queda en la URL como `?sel=`).
   - En desktop flota abajo a la izquierda, con 400 px de ancho. En pantallas anchas el mapa encuadra los pines a su derecha, así abrirla no tapa ningún destino.
   - En mobile es una hoja inferior (hasta 60 % del mapa). Si tapa el pin elegido, el mapa se corre para dejarlo a la vista.
-- **Destino:** encabezado con la ruta, calendario de tarifas de 2 meses con navegación, histograma de 12 meses arriba y selector de noches.
+- **Destino:** encabezado con la ruta, calendario de tarifas de 2 meses con navegación, histograma de 12 meses arriba y selector de días de viaje.
+- **Barra de búsqueda:** arranca sin origen (el campo "Desde" dice "Elegí el origen" y se marca en rojo solo si se intenta buscar sin él). La duración del viaje es un selector de un solo punto, de 1 a 21 días, en la barra y en el calendario.
 - Todo el texto va alineado a la izquierda; solo los precios van a la derecha, en columna.
 
 ## Principios

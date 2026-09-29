@@ -6,21 +6,23 @@ import * as Popover from '@radix-ui/react-popover';
 import * as Slider from '@radix-ui/react-slider';
 import { addMonths, endOfMonth, format, startOfMonth } from 'date-fns';
 import { useId, useState, type ReactNode } from 'react';
-import { plusDays, today, type DestinationMode, type OriginMode, type SearchCriteria } from '@/api/mappers';
+import { MAX_STAY_DAYS, MIN_STAY_DAYS, plusDays, stayDaysBetween, today, type DestinationMode, type OriginMode, type SearchCriteria } from '@/api/mappers';
 import { useSettings } from '@/app/settings';
 import { defaultWindow } from '@/app/urlState';
 import { REGIONS, THEMES, THEME_BY_CODE, REGION_BY_CODE } from '@/data/catalog';
 import { countryName, placeLabel } from '@/data/geo';
 import { CountryCombobox } from '@/ui/CountryCombobox';
 import { PlaceCombobox } from '@/ui/PlaceCombobox';
+import { StayDaysSlider } from '@/ui/StayDaysSlider';
 import { IconSearch } from '@/ui/icons';
-import { Button, ToggleChip, cx, formatDate, formatMoney } from '@/ui/primitives';
+import { Button, ToggleChip, cx, formatDate, formatDays, formatMoney } from '@/ui/primitives';
 
-export function emptyCriteria(origin = 'BUE'): SearchCriteria {
+/** Búsqueda en blanco: sin origen predeterminado (el usuario lo elige). */
+export function emptyCriteria(): SearchCriteria {
   const { from, to } = defaultWindow();
   return {
     originMode: 'place',
-    origins: [origin],
+    origins: [],
     destinationMode: 'anywhere',
     destinations: [],
     exclude: [],
@@ -68,13 +70,14 @@ function whenSummary(c: SearchCriteria) {
   const to = monthLabel(c.toDate);
   const range = from === to ? from : `${from} a ${to}`;
   if (c.tripType === 'oneway') return `${range}, solo ida`;
-  const nights = c.lengthsOfStay.length === 1 ? `${c.lengthsOfStay[0]} noches` : `${Math.min(...c.lengthsOfStay)} a ${Math.max(...c.lengthsOfStay)} noches`;
-  return `${range}, ${nights}`;
+  // Un solo valor desde el selector; links viejos pueden traer varios ("3 a 7 días").
+  const days = c.lengthsOfStay.length === 1 ? formatDays(c.lengthsOfStay[0]) : `${Math.min(...c.lengthsOfStay)} a ${Math.max(...c.lengthsOfStay)} días`;
+  return `${range}, ${days}`;
 }
 
 // ---------- Campo tipo tarjeta de embarque ----------
 
-function PassField({ label, value, children, invalid, wide }: { label: string; value: string; children: ReactNode; invalid?: boolean; wide?: boolean }) {
+function PassField({ label, value, children, invalid, placeholder, wide }: { label: string; value: string; children: ReactNode; invalid?: boolean; placeholder?: boolean; wide?: boolean }) {
   return (
     <Popover.Root>
       <Popover.Trigger asChild>
@@ -86,7 +89,7 @@ function PassField({ label, value, children, invalid, wide }: { label: string; v
           )}
         >
           <span className="text-2xs text-ink-soft">{label}</span>
-          <span className={cx('w-full truncate font-display text-[19px] font-semibold leading-tight', invalid && 'text-danger')}>{value}</span>
+          <span className={cx('w-full truncate font-display text-[19px] leading-tight', placeholder ? 'font-medium' : 'font-semibold', invalid ? 'text-danger' : placeholder && 'text-ink-soft')}>{value}</span>
         </button>
       </Popover.Trigger>
       <Popover.Portal>
@@ -225,15 +228,6 @@ function DestinationPanel({ c, set }: { c: SearchCriteria; set: (p: Partial<Sear
   );
 }
 
-const NIGHTS = [
-  { label: 'Fin de semana', values: [2, 3] },
-  { label: '5 noches', values: [5] },
-  { label: '1 semana', values: [7] },
-  { label: '10 noches', values: [10] },
-  { label: '2 semanas', values: [14] },
-  { label: '3 semanas', values: [21] },
-];
-
 function WhenPanel({ c, set }: { c: SearchCriteria; set: (p: Partial<SearchCriteria>) => void }) {
   const ids = { dep: useId(), ret: useId() };
   const first = startOfMonth(new Date());
@@ -252,13 +246,6 @@ function WhenPanel({ c, set }: { c: SearchCriteria; set: (p: Partial<SearchCrite
     if (selectedMonths.length === 1 && format(selectedMonths[0], 'yyyy-MM') !== format(m, 'yyyy-MM')) {
       set({ fromDate: start < c.fromDate ? start : c.fromDate, toDate: end > c.toDate ? end : c.toDate });
     } else set({ fromDate: start, toDate: end });
-  };
-
-  const nightsKey = (v: number[]) => v.join(',');
-  const toggleNights = (values: number[]) => {
-    const has = values.every((v) => c.lengthsOfStay.includes(v));
-    const next = has ? c.lengthsOfStay.filter((v) => !values.includes(v)) : Array.from(new Set([...c.lengthsOfStay, ...values])).sort((a, b) => a - b);
-    set({ lengthsOfStay: next.length ? next : c.lengthsOfStay });
   };
 
   return (
@@ -310,16 +297,11 @@ function WhenPanel({ c, set }: { c: SearchCriteria; set: (p: Partial<SearchCrite
             </p>
           </fieldset>
           {c.tripType === 'roundtrip' && (
-            <fieldset>
-              <legend className="mb-2 text-2xs font-medium text-ink-soft">Duración de la estadía</legend>
-              <div className="flex flex-wrap gap-1.5">
-                {NIGHTS.map((n) => (
-                  <ToggleChip key={nightsKey(n.values)} pressed={n.values.every((v) => c.lengthsOfStay.includes(v))} onToggle={() => toggleNights(n.values)}>
-                    {n.label}
-                  </ToggleChip>
-                ))}
-              </div>
-            </fieldset>
+            <StayDaysSlider
+              value={c.lengthsOfStay[0] ?? 7}
+              onChange={(days) => set({ lengthsOfStay: [days] })}
+              hint={`Se envía como lengthsOfStay. Flight Search acepta de ${MIN_STAY_DAYS} a ${MAX_STAY_DAYS} días.`}
+            />
           )}
         </>
       ) : (
@@ -335,7 +317,17 @@ function WhenPanel({ c, set }: { c: SearchCriteria; set: (p: Partial<SearchCrite
               <label htmlFor={ids.ret} className="mb-1 block text-2xs font-medium text-ink-soft">
                 Vuelta
               </label>
-              <input id={ids.ret} name="regreso" type="date" min={c.departDate ?? today()} value={c.returnDate ?? ''} onChange={(e) => set({ returnDate: e.target.value })} className="h-10 w-full rounded-lg border border-line bg-land px-2" />
+              {/* Flight Search acepta viajes de 1 a 21 días. */}
+              <input
+                id={ids.ret}
+                name="regreso"
+                type="date"
+                min={c.departDate ? plusDays(c.departDate, MIN_STAY_DAYS) : today()}
+                max={c.departDate ? plusDays(c.departDate, MAX_STAY_DAYS) : undefined}
+                value={c.returnDate ?? ''}
+                onChange={(e) => set({ returnDate: e.target.value })}
+                className="h-10 w-full rounded-lg border border-line bg-land px-2"
+              />
             </div>
           )}
         </div>
@@ -391,7 +383,10 @@ export function validateCriteria(c: SearchCriteria): string | undefined {
   if (c.originMode !== 'place' && (c.destinationMode !== 'place' || c.destinations.length !== 1)) return 'Con varios orígenes, elegí un único destino (ciudad o aeropuerto).';
   if (['place', 'country', 'region', 'theme'].includes(c.destinationMode) && !c.destinations.length) return 'Elegí al menos un destino o volvé a "Cualquier lugar".';
   if (c.dateMode === 'exact' && !c.departDate) return 'Elegí la fecha de ida.';
-  if (c.dateMode === 'exact' && c.tripType === 'roundtrip' && (!c.returnDate || c.returnDate < c.departDate!)) return 'La vuelta tiene que ser después de la ida.';
+  if (c.dateMode === 'exact' && c.tripType === 'roundtrip') {
+    if (!c.returnDate || c.returnDate <= c.departDate!) return 'La vuelta tiene que ser después de la ida.';
+    if (stayDaysBetween(c.departDate!, c.returnDate) > MAX_STAY_DAYS) return `Flight Search admite viajes de ${MIN_STAY_DAYS} a ${MAX_STAY_DAYS} días.`;
+  }
   return undefined;
 }
 
@@ -417,7 +412,8 @@ export function SearchForm({ initial, onSubmit, busy }: { initial: SearchCriteri
       className="rounded-2xl border border-line bg-land p-1.5"
     >
       <div className="flex flex-col gap-1 sm:flex-row sm:items-stretch">
-        <PassField label="Desde" value={originSummary(c)} invalid={!c.origins.length}>
+        {/* En rojo solo después de intentar buscar sin origen, no de entrada. */}
+        <PassField label="Desde" value={originSummary(c)} invalid={Boolean(error) && !c.origins.length} placeholder={!c.origins.length}>
           <OriginPanel c={c} set={set} />
         </PassField>
         <div className="perforation hidden sm:block" aria-hidden="true" />

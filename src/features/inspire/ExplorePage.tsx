@@ -150,7 +150,7 @@ export function ExplorePage() {
         <ExploreMap
           padLeft={reserveCardSpace ? 400 : 0}
           overlayRef={cardRef}
-          origins={criteria ? (openOrigin ? [criteria.destinations[0]] : criteria.origins) : ['BUE']}
+          origins={criteria ? (openOrigin ? [criteria.destinations[0]] : criteria.origins) : []}
           reverse={openOrigin}
           points={points}
           selected={selected?.code}

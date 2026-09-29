@@ -47,6 +47,17 @@ describe('Flight Search requests', () => {
     expectValid('flightsearch', 'FlightSearchRequest', req);
   });
 
+  it.each([1, 8, 21])('duración de %i días (un solo valor del selector) cumple el spec', (days) => {
+    const req = buildExploreSearchRequest({ ...base, lengthsOfStay: [days] }, market);
+    expectValid('flightsearch', 'FlightSearchRequest', req);
+    expect(req.lengthsOfStay).toEqual([days]);
+  });
+
+  it('el spec rechaza duraciones de más de 21 días (por eso el selector llega a 21)', () => {
+    const req = buildExploreSearchRequest({ ...base, lengthsOfStay: [22] }, market);
+    expect(validateAgainstSpec('flightsearch', 'FlightSearchRequest', req)).not.toEqual([]);
+  });
+
   it('usa City para códigos de ciudad y Airport para aeropuertos', () => {
     expect(buildExploreSearchRequest(base, market).departureLocation).toEqual({ locationType: 'City', locationCode: 'BUE' });
     expect(buildExploreSearchRequest({ ...base, origins: ['MVD'] }, market).departureLocation).toEqual({ locationType: 'Airport', locationCode: 'MVD' });

@@ -24,11 +24,21 @@ async function expectPinVisibleNextToCard(page: Page) {
     .toBe('visible');
 }
 
-test('portada: solo la barra de búsqueda y el mapa', async ({ page }) => {
+/** Elige el origen en el campo "Desde" (combobox con Geo Autocomplete, mock). */
+async function chooseOrigin(page: Page, text: string, option: RegExp) {
+  await page.getByRole('button', { name: /^Desde/ }).click();
+  await page.getByRole('combobox', { name: 'Desde' }).fill(text);
+  await page.getByRole('option', { name: option }).click();
+  await page.keyboard.press('Escape');
+}
+
+test('portada: solo la barra de búsqueda y el mapa, sin origen predeterminado', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Buscar destinos' })).toBeVisible();
   await expect(map(page)).toBeVisible();
   await expect(page.getByText('Elegí desde dónde salís')).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Desde/ })).toContainText('Elegí el origen');
+  await expect(map(page).getByText('BUE', { exact: true })).toHaveCount(0);
   // Sin panel lateral ni pantallas de Shop, Check o Reshop.
   await expect(page.getByRole('complementary')).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Cambiar un viaje' })).toHaveCount(0);
@@ -36,7 +46,14 @@ test('portada: solo la barra de búsqueda y el mapa', async ({ page }) => {
 
 test('recorrido: Flight Search en el mapa → Flight Refresh en la tarjeta', async ({ page }) => {
   await page.goto('/');
+  // Sin origen no se busca.
   await page.getByRole('button', { name: 'Buscar destinos' }).click();
+  await expect(page.getByText('Elegí desde dónde salís.')).toBeVisible();
+  await expect(page).not.toHaveURL(/o=/);
+
+  await chooseOrigin(page, 'Buenos', /Buenos Aires \(todos los aeropuertos\)/);
+  await page.getByRole('button', { name: 'Buscar destinos' }).click();
+  await expect(page).toHaveURL(/o=BUE/);
 
   // Flight Search: pines con precio sobre el mapa.
   await expect(page.getByText(/\d+ destinos en caché/)).toBeVisible();
@@ -95,6 +112,41 @@ test('de la tarjeta al calendario de tarifas', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Tarifa más baja por día de salida' })).toBeVisible();
   await page.locator('[data-date]').first().waitFor();
   await expect(page.getByText('volvé al mapa y tocá el destino')).toBeVisible();
+});
+
+test('duración del viaje en días con un solo selector (1 a 21)', async ({ page }) => {
+  await page.goto('/?o=BUE');
+  await page.getByRole('button', { name: /^Cuándo/ }).click();
+  const days = page.getByRole('slider', { name: 'Duración del viaje' });
+  await expect(days).toHaveAttribute('aria-valuetext', '7 días');
+  await expect(days).toHaveAttribute('aria-valuemin', '1');
+  await expect(days).toHaveAttribute('aria-valuemax', '21');
+  await days.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(days).toHaveAttribute('aria-valuetext', '8 días');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: /^Cuándo/ })).toContainText('8 días');
+  await page.getByRole('button', { name: 'Buscar destinos' }).click();
+  await expect(page).toHaveURL(/los=8(&|$)/);
+});
+
+test('calendario: la duración cambia al soltar el selector de días', async ({ page }) => {
+  await page.goto('/destino/MAD?o=BUE&los=10');
+  await expect(page.getByText('ida y vuelta de 10 días')).toBeVisible();
+  const days = page.getByRole('slider', { name: /Duración del viaje/ });
+  await days.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page).toHaveURL(/los=11/);
+  await expect(page.getByText('ida y vuelta de 11 días')).toBeVisible();
+});
+
+test('calendario sin origen: avisa y no llama a Flight Search', async ({ page }) => {
+  const searches: string[] = [];
+  page.on('request', (r) => r.url().includes('/offers/flightSearch') && searches.push(r.url()));
+  await page.goto('/destino/MAD');
+  await expect(page.getByText('Falta el origen')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Ir al mapa' })).toBeVisible();
+  expect(searches).toEqual([]);
 });
 
 test('calendario accesible con teclado', async ({ page }) => {

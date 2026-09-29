@@ -13,7 +13,7 @@ import { countryName, getPlace, placeLabel } from '@/data/geo';
 import { ApiSourceTag } from '@/features/devtools/ApiSourceTag';
 import { LegLine, RouteTitle, TravelersPicker, ValidationBadge, validationDetail } from '@/features/shared/travel';
 import { IconCalendar, IconClose, IconShield } from '@/ui/icons';
-import { Button, IconButton, Notice, Price, cx, formatDate } from '@/ui/primitives';
+import { Button, IconButton, Notice, Price, cx, formatDate, formatDays } from '@/ui/primitives';
 
 interface Props {
   summary: DestinationSummary;
@@ -139,7 +139,7 @@ export function DestinationCard({ summary, openOrigin, calendarLink, onClose, re
                 place && countryName(place.country),
                 outbound && `ida ${formatDate(outbound.departDate)}`,
                 inbound && `vuelta ${formatDate(inbound.departDate)}`,
-                offer.lengthOfStay !== undefined && `${offer.lengthOfStay} noches`,
+                offer.lengthOfStay !== undefined && formatDays(offer.lengthOfStay),
               ]
                 .filter(Boolean)
                 .join(' · ')}
