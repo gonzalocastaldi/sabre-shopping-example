@@ -128,6 +128,9 @@ export const formatDate = (iso: string) => DATE_FMT.format(asDate(iso));
 export const formatDateLong = (iso: string) => DATE_LONG.format(asDate(iso));
 export const formatMonth = (iso: string) => MONTH_FMT.format(asDate(iso));
 
+/** Duración del viaje (lengthsOfStay de Flight Search, en días): "1 día", "8 días". */
+export const formatDays = (n: number) => `${n} ${n === 1 ? 'día' : 'días'}`;
+
 export function formatDuration(min?: number) {
   if (min === undefined) return '';
   const h = Math.floor(min / 60);

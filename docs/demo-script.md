@@ -45,7 +45,7 @@ Objetivo: mostrar cómo una OTA puede **inspirar** con la caché de Sabre (Fligh
 - En la tarjeta, tocá **"Ver el calendario de tarifas"**.
 - **Franja de 12 meses:** Flight Search con `Per Month`, solo precio. El mes más barato aparece en magenta.
 - **Calendario:** Flight Search con `Per Day` y `returnFullOffers: true`, un precio por día con heatmap.
-  - Cambiá las **noches de estadía**: el `lengthsOfStay` cambia y el calendario se vuelve a pedir.
+  - Mové el selector de **duración del viaje** (1 a 21 días, lo que acepta `lengthsOfStay`): al soltarlo cambia el `lengthsOfStay` y el calendario se vuelve a pedir.
   - El calendario se recorre con las flechas del teclado.
 
 ## Cierre

@@ -41,6 +41,10 @@ Citá la doc usada en PRs y comentarios relevantes (`https://developer.sabre.com
 
 Los tipos de `src/api/types/*.ts` se generan con `npm run gen:types`; no se editan a mano (salvo `geo.ts`, que es Swagger 2.0).
 
+### Reglas de Flight Search (fuente: https://developer.sabre.com/rest-api/flightsearch-api/v1)
+- **`lengthsOfStay` son días, de 1 a 21** ("Array of integers (1-21)", "Trip duration in days": días entre la salida de ida y la de vuelta). Cualquier entero del rango, sin un conjunto fijo. La UI usa un solo selector (`src/ui/StayDaysSlider.tsx`) y habla de "días", no de "noches". Con fechas exactas también se valida el máximo de 21 días.
+- No hay origen predeterminado: sin origen no se busca (ni en el mapa ni en el calendario).
+
 ### Reglas de Flight Refresh (fuente: https://developer.sabre.com/rest-api/flightrefresh-api/v1)
 - **`pseudoCityCode` es obligatorio** ("required data elements (`passengerTypeCode` and `pseudoCityCode`)"). `buildRefreshRequests` falla antes de llamar si no hay PCC (`SABRE_REQUEST_PCC` o Ajustes). Flight Check sin PCC respondía HTTP 200 con solo `timestamp`, así que `useFlightRefresh` trata como error una respuesta sin itinerarios ni errores.
 - **Las fechas tienen que coincidir.** La `departureDate` de cada `journeys[i]` del request tiene que ser la del primer vuelo de `itineraries[*].journeys[i]`. Si no, Sabre responde `Flight and requested journey departure dates must match.` Por eso los itinerarios se agrupan por ruta y fechas: un request por grupo, con hasta 100 itinerarios.
