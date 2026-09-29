@@ -7,7 +7,7 @@ OTA de ejemplo, solo frontend (React), para presentar las APIs de shopping inspi
 | Mapa (pines con precio) | **Flight Search** v1, `Per Date Range` con ofertas completas | Destino abierto ("a cualquier lugar", país, región ATPCO, temas), origen abierto, presupuesto y tarifa directa |
 | Tarjeta del destino (al tocar un pin) | **Flight Search** + **Flight Refresh** v1 | Vuelos y clase tarifaria en caché. "Validar con Flight Refresh" confirma horario (OAG) y asientos por clase, sin reservar |
 | Destino: franja de 12 meses | **Flight Search** v1, `Per Month` (solo precio) | El precio más bajo de cada mes |
-| Destino: calendario | **Flight Search** v1, `Per Day` (ofertas completas) | Tarifa más baja por día de salida, con heatmap |
+| Destino: calendario | **Flight Search** v1, `Per Day` (ofertas completas) + **Flight Refresh** v1 | Tarifa más baja por día de salida, con heatmap. El día elegido se valida con "Validar con Flight Refresh" |
 | Autocompletar | **Geo Autocomplete** v2 | Aeropuertos y ciudades mientras escribís |
 
 > **Alcance: PROD, solo Flight Search y Flight Refresh.** No se crean reservas ni se emiten tickets. El proxy local responde 403 a cualquier otro endpoint, incluidos Shop, Check y Reshop (ver [`CLAUDE.md`](CLAUDE.md)).

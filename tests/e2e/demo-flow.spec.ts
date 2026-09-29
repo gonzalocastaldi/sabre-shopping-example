@@ -105,13 +105,33 @@ test('el destino elegido queda en la URL (link directo)', async ({ page }) => {
   await expect(page.locator(`[data-map-code="${code}"]`)).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('de la tarjeta al calendario de tarifas', async ({ page }) => {
+test('calendario: precios con $, Flight Refresh del día elegido y volver al mapa', async ({ page }) => {
   await page.goto('/?o=BUE&dm=theme&dv=Beach');
+  const code = await pins(page).first().getAttribute('data-map-code');
   await pins(page).first().click();
   await card(page).getByRole('link', { name: /Ver el calendario de tarifas/ }).click();
   await expect(page.getByRole('heading', { name: 'Tarifa más baja por día de salida' })).toBeVisible();
-  await page.locator('[data-date]').first().waitFor();
-  await expect(page.getByText('volvé al mapa y tocá el destino')).toBeVisible();
+
+  // Cada celda muestra el símbolo de la moneda.
+  const day = page.locator('[data-date]').first();
+  await expect(day).toContainText('$');
+
+  // Flight Refresh sin volver al mapa.
+  await day.click();
+  const aside = page.getByRole('complementary');
+  await aside.getByRole('button', { name: 'Validar con Flight Refresh' }).click();
+  await expect(aside.getByText('Horario publicado (OAG)')).toBeVisible();
+
+  // "Volver al mapa" vuelve a la misma búsqueda con la tarjeta abierta.
+  await page.getByRole('button', { name: 'Volver al mapa' }).click();
+  await expect(page).toHaveURL(new RegExp(`dv=Beach.*sel=${code}|sel=${code}.*dv=Beach`));
+  await expect(card(page)).toBeVisible();
+});
+
+test('calendario por link directo: "Volver al mapa" abre el mapa desde ese origen', async ({ page }) => {
+  await page.goto('/destino/MAD?o=BUE&los=10');
+  await page.getByRole('link', { name: 'Volver al mapa' }).click();
+  await expect(page).toHaveURL(/\/\?o=BUE$/);
 });
 
 test('duración del viaje en días con un solo selector (1 a 21)', async ({ page }) => {

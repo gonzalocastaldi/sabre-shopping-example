@@ -3,7 +3,7 @@
 ## Propósito
 OTA de ejemplo (solo frontend, React) para presentar a clientes las APIs de **shopping inspiracional** de Sabre Mosaic. **Alcance actual: solo Flight Search y Flight Refresh.**
 - **Flight Search**: open date, open destination/origin, calendario de tarifas y mapa.
-- **Flight Refresh**: se prueba desde el mapa. Al tocar un pin se abre una tarjeta con la oferta en caché y el botón "Validar con Flight Refresh".
+- **Flight Refresh**: se prueba desde el mapa (al tocar un pin se abre una tarjeta con la oferta en caché y el botón "Validar con Flight Refresh") y desde el día elegido del calendario. Los dos usan `src/features/shared/RefreshBox.tsx`.
 - La pantalla principal es solo la barra de búsqueda y el mapa, sin paneles laterales.
 - Flight Shop, Flight Check y Flight Reshop se sacaron de la demo; el código quedó en el historial de git (commit `9e548b2`). Volver a sumarlos requiere consultarlo antes.
 
