@@ -6,7 +6,7 @@
 import { recordCall, updateCall } from './inspector';
 import type { MosaicError } from './mosaic';
 
-export type ApiName = 'flightSearch' | 'flightRefresh' | 'flightShop' | 'flightCheck' | 'flightReshop' | 'geoAutocomplete';
+export type ApiName = 'flightSearch' | 'flightRefresh' | 'geoAutocomplete';
 
 export interface ApiMeta {
   label: string;
@@ -31,27 +31,6 @@ export const API_META: Record<ApiName, ApiMeta> = {
     path: '/v1/offers/flightRefresh',
     docUrl: 'https://developer.sabre.com/rest-api/flightrefresh-api/v1',
     role: 'Valida en lote ofertas cacheadas contra el inventario (horario y clase).',
-  },
-  flightShop: {
-    label: 'Flight Shop',
-    method: 'POST',
-    path: '/v1/offers/flightShop',
-    docUrl: 'https://developer.sabre.com/rest-api/flightshop-api/v1',
-    role: 'Shopping en vivo multi-fuente (ATPCO, NDC, LCC) para fechas concretas.',
-  },
-  flightCheck: {
-    label: 'Flight Check',
-    method: 'POST',
-    path: '/v1/offers/flightCheck',
-    docUrl: 'https://developer.sabre.com/rest-api/flightcheck-api/v1',
-    role: 'Revalida precio y disponibilidad de la oferta elegida, con reglas y upsell.',
-  },
-  flightReshop: {
-    label: 'Flight Reshop',
-    method: 'POST',
-    path: '/v1/offers/flightReshop',
-    docUrl: 'https://developer.sabre.com/rest-api/flight-reshop-api/1.0',
-    role: 'Busca opciones de cambio para un ticket o reserva existente (sin ejecutarlas).',
   },
   geoAutocomplete: {
     label: 'Geo Autocomplete',
@@ -132,7 +111,7 @@ function hasPayload(data: unknown): boolean {
 }
 
 /** Mensaje de error en lenguaje de usuario, con qué hacer. */
-export function describeError(error: unknown): { title: string; detail: string } {
+export function describeError(error: unknown, action = 'la búsqueda'): { title: string; detail: string } {
   if (error instanceof SabreApiError) {
     const first = error.errors[0];
     if (error.status === 401) return { title: 'El token de Sabre no es válido', detail: first?.description ?? 'Actualizá SABRE_TOKEN en .env.local.' };
@@ -145,6 +124,6 @@ export function describeError(error: unknown): { title: string; detail: string }
         'Probá cambiar los filtros.',
     };
   }
-  if (error instanceof Error) return { title: 'Algo falló en la búsqueda', detail: error.message };
-  return { title: 'Algo falló en la búsqueda', detail: String(error) };
+  if (error instanceof Error) return { title: `Algo falló en ${action}`, detail: error.message };
+  return { title: `Algo falló en ${action}`, detail: String(error) };
 }

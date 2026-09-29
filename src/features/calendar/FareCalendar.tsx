@@ -5,8 +5,6 @@
 import { addDays, addMonths, eachDayOfInterval, endOfMonth, endOfWeek, format, startOfMonth, startOfWeek } from 'date-fns';
 import { useRef } from 'react';
 import type { CalendarDay } from '@/api/normalize';
-import type { RefreshResult } from '@/api/hooks';
-import { IconCheck, IconAlert } from '@/ui/icons';
 import { cx, formatMoney, formatMonth } from '@/ui/primitives';
 
 const WEEKDAYS = Array.from({ length: 7 }, (_, i) => new Intl.DateTimeFormat('es', { weekday: 'narrow' }).format(new Date(2024, 0, 1 + i)));
@@ -38,13 +36,12 @@ interface Props {
   selected?: string;
   onSelect: (date: string) => void;
   onNavigate: (firstMonth: string) => void;
-  validations?: Map<string, RefreshResult>;
   minDate: string;
   maxDate: string;
   loading?: boolean;
 }
 
-export function FareCalendar({ firstMonth, monthsShown, days, selected, onSelect, onNavigate, validations, minDate, maxDate, loading }: Props) {
+export function FareCalendar({ firstMonth, monthsShown, days, selected, onSelect, onNavigate, minDate, maxDate, loading }: Props) {
   const gridRef = useRef<HTMLDivElement>(null);
   const bucket = priceBuckets(days);
   const min = Math.min(...[...days.values()].map((d) => d.cheapest.price!.amount));
@@ -96,7 +93,6 @@ export function FareCalendar({ firstMonth, monthsShown, days, selected, onSelect
                     const date = iso(day);
                     const inMonth = day.getMonth() === month.getMonth();
                     const info = days.get(date);
-                    const validation = validations?.get(date);
                     if (!inMonth) return <div key={date} role="gridcell" aria-hidden="true" />;
                     const price = info?.cheapest.price;
                     const label = price
@@ -120,15 +116,6 @@ export function FareCalendar({ firstMonth, monthsShown, days, selected, onSelect
                           >
                             <span className="text-2xs leading-none opacity-80 tabular">{day.getDate()}</span>
                             <span className="mt-1 font-display text-[14px] font-semibold leading-none tabular sm:text-[16px]">{formatAmount(price.amount)}</span>
-                            {validation && (
-                              <span className="absolute right-0.5 top-0.5" aria-hidden="true">
-                                {validation.isItineraryValid && validation.bookingClassCodeValidation === 'Matched' ? (
-                                  <IconCheck size={13} className="rounded-full bg-land p-px text-cyan" />
-                                ) : (
-                                  <IconAlert size={13} className="rounded-full bg-land p-px text-warn" />
-                                )}
-                              </span>
-                            )}
                             {price.amount === min && <span className="absolute inset-x-2 bottom-1 h-0.5 rounded-full bg-magenta" aria-hidden="true" />}
                           </button>
                         ) : (
@@ -164,9 +151,6 @@ export function CalendarLegend() {
       </span>
       <span className="flex items-center gap-1.5">
         <span className="h-0.5 w-4 rounded-full bg-magenta" aria-hidden="true" /> Precio mínimo del período
-      </span>
-      <span className="flex items-center gap-1.5">
-        <IconCheck size={13} className="text-cyan" /> Validado con Flight Refresh
       </span>
     </div>
   );

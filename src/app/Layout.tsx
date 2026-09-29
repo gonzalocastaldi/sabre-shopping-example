@@ -21,8 +21,6 @@ function Wordmark() {
   );
 }
 
-const navClass = 'rounded-md px-2.5 py-1.5 text-[15px] text-ink-soft hover:text-ink data-[status=active]:text-ink data-[status=active]:font-medium';
-
 export function Layout() {
   const calls = useApiCalls();
   const pending = calls.some((c) => c.status === 'pending');
@@ -34,14 +32,6 @@ export function Layout() {
       <header className="sticky top-0 z-40 border-b border-line bg-paper/90 backdrop-blur-sm pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex h-14 max-w-[1440px] items-center gap-2 px-4 sm:gap-5 sm:px-6">
           <Wordmark />
-          <nav aria-label="Principal" className="hidden items-center gap-1 sm:flex">
-            <Link to="/" className={navClass} activeOptions={{ exact: true, includeSearch: false }}>
-              Explorar
-            </Link>
-            <Link to="/cambios" className={navClass}>
-              Cambiar un viaje
-            </Link>
-          </nav>
           <span className="flex-1" />
           <ConnectionBadge />
           <button
@@ -57,14 +47,6 @@ export function Layout() {
             {pending && <span className="size-1.5 animate-pulse rounded-full bg-magenta" aria-hidden="true" />}
           </button>
         </div>
-        <nav aria-label="Principal (mobile)" className="flex gap-1 px-3 pb-2 sm:hidden">
-          <Link to="/" className={navClass} activeOptions={{ exact: true, includeSearch: false }}>
-            Explorar
-          </Link>
-          <Link to="/cambios" className={navClass}>
-            Cambiar un viaje
-          </Link>
-        </nav>
       </header>
       <main id="main" className="flex flex-1 flex-col">
         <Outlet />

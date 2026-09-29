@@ -6,7 +6,7 @@ import { MOCK_ANYWHERE, REGION_BY_CODE, THEME_BY_CODE } from '@/data/catalog';
 import { airportsInCountry, getCity } from '@/data/geo';
 import type { FlightSearchRequest, SearchLocation } from '@/api/requests';
 import type { MosaicFlight, MosaicJourney, MosaicOffer, MosaicResponse } from '@/api/mosaic';
-import { buildLeg, carriersFor, farePrice, flightsSignature, fx, hasNonStop, mainAirport, money, pick, rememberPrice, rng, stripFlight, uuid } from './core';
+import { buildLeg, carriersFor, farePrice, fx, hasNonStop, mainAirport, money, pick, rng, stripFlight, uuid } from './core';
 
 const DAY = 86400000;
 const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
@@ -161,10 +161,6 @@ function buildSearchOffer(
     }
   });
 
-  if (full) {
-    const offerFlights = journeys.filter((j) => journeyRefs.includes(j.id)).flatMap((j) => j.flightRefs ?? []).map((id) => flights.find((f) => f.id === id)!);
-    rememberPrice(flightsSignature(offerFlights), c.usd);
-  }
   const total = money(amount, currency);
   const taxes = money(amount * 0.22, currency);
   const base = money(amount - Number(taxes), currency);

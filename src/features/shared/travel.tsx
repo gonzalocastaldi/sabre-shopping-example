@@ -1,16 +1,16 @@
 /**
  * Piezas de viaje reutilizables: tramo de itinerario, monograma de aerolínea,
- * estado de validación, políticas (equipaje/cambios) y selector de pasajeros.
+ * estado de validación de Flight Refresh y selector de pasajeros.
  */
 import * as Popover from '@radix-ui/react-popover';
-import type { BookingClassCodeValidation, FlexibilityRule } from '@/api/mosaic';
-import type { Leg, OfferPolicies } from '@/api/normalize';
+import type { BookingClassCodeValidation } from '@/api/mosaic';
+import type { Leg } from '@/api/normalize';
 import type { Travelers } from '@/api/mappers';
 import { airlineName } from '@/data/airlines';
 import { PASSENGER_TYPES } from '@/data/catalog';
 import { placeLabel } from '@/data/geo';
-import { IconAlert, IconBag, IconCarryOn, IconCheck, IconChevronDown, IconRefund, IconSwap } from '@/ui/icons';
-import { cx, formatDate, formatDuration, formatMoney } from '@/ui/primitives';
+import { IconAlert, IconCheck, IconChevronDown, IconSwap } from '@/ui/icons';
+import { cx, formatDate, formatDuration } from '@/ui/primitives';
 
 export function AirlineMark({ code, size = 32 }: { code: string; size?: number }) {
   // Color estable por aerolínea, dentro de la paleta (sin logos de marcas).
@@ -130,38 +130,6 @@ export function ValidationBadge({ value, valid = true, compact }: { value?: Book
 }
 
 export const validationDetail = (value?: BookingClassCodeValidation) => VALIDATION[value ?? 'Unknown'].detail;
-
-function ruleText(rule?: FlexibilityRule, noun = 'Cambios') {
-  if (!rule) return 'Sin información';
-  if (!rule.isPermitted) return `${noun}: no permitido`;
-  const charge = Number(rule.maxCharge ?? 0);
-  return charge === 0 ? `${noun}: sin cargo` : `${noun}: con cargo de ${formatMoney(charge, rule.currencyCode ?? 'USD')}`;
-}
-
-/** Equipaje y flexibilidad, en lenguaje de viajero. */
-export function PolicyList({ policies, className }: { policies: OfferPolicies; className?: string }) {
-  const bags = policies.checkedBags;
-  const items = [
-    {
-      icon: IconBag,
-      text: bags ? (bags.pieces ? `${bags.pieces} valija${bags.pieces > 1 ? 's' : ''} despachada${bags.pieces > 1 ? 's' : ''}${bags.weightKg ? ` de ${bags.weightKg}\u00a0kg` : ''}` : 'Sin valija despachada') : 'Equipaje: sin información',
-      ok: Boolean(bags?.pieces),
-    },
-    { icon: IconCarryOn, text: policies.carryOn ? `Equipaje de mano${policies.carryOn.weightKg ? ` de ${policies.carryOn.weightKg}\u00a0kg` : ''}` : 'Equipaje de mano: sin información', ok: Boolean(policies.carryOn) },
-    { icon: IconSwap, text: ruleText(policies.change?.before, 'Cambios'), ok: Boolean(policies.change?.before?.isPermitted) },
-    { icon: IconRefund, text: ruleText(policies.refund?.before, 'Reembolso'), ok: Boolean(policies.refund?.before?.isPermitted) },
-  ];
-  return (
-    <ul className={cx('space-y-1.5 text-sm', className)}>
-      {items.map(({ icon: Icon, text, ok }) => (
-        <li key={text} className="flex items-center gap-2">
-          <Icon size={18} className={ok ? 'text-cyan' : 'text-ink-soft'} />
-          <span className={ok ? '' : 'text-ink-soft'}>{text}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 export function TravelersPicker({ value, onChange }: { value: Travelers; onChange: (t: Travelers) => void }) {
   const total = value.ADT + value.CNN + value.INF;

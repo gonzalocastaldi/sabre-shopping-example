@@ -132,6 +132,7 @@ export function formatDuration(min?: number) {
   if (min === undefined) return '';
   const h = Math.floor(min / 60);
   const m = min % 60;
+  if (!h) return `${m} min`;
   return m ? `${h} h ${m} min` : `${h} h`;
 }
 

@@ -1,17 +1,15 @@
 /**
  * Normaliza el modelo de referencias de Mosaic (offers → journeyRefs → journeys →
  * flightRefs → flights; fareComponents.segmentDetails.flightRef → RBD/cabina/brand)
- * a view models planos para la UI. Lo usan Search, Shop, Check y Reshop.
+ * a view models planos para la UI (mapa, calendario y tarjeta del destino).
  */
 import type {
   BookingClassCodeValidation,
   CabinName,
   ExchangeCharge,
-  FlexibilityRule,
   MosaicFlight,
   MosaicOffer,
   MosaicResponse,
-  OfferAttributes,
   SegmentDetail,
 } from './mosaic';
 
@@ -228,39 +226,6 @@ function normalizeOffer(
     validation: validations.get(offer.id),
     co2Grams: co2.length && co2.every((c) => c !== undefined) ? co2.reduce((a, b) => a! + b!, 0) : undefined,
     taxItemRefs: Array.from(new Set(fares.flatMap((f) => f.taxItemRefs ?? []))),
-  };
-}
-
-export interface OfferPolicies {
-  checkedBags?: { pieces?: number; weightKg?: number; description?: string };
-  carryOn?: { pieces?: number; weightKg?: number; description?: string };
-  refund?: { before?: FlexibilityRule; after?: FlexibilityRule };
-  change?: { before?: FlexibilityRule; after?: FlexibilityRule };
-}
-
-/** Resuelve equipaje y reglas de cambio/reembolso de una oferta a partir de offerAttributes. */
-export function resolvePolicies(offer: TripOffer, attributes?: OfferAttributes): OfferPolicies {
-  if (!attributes) return {};
-  const firstSeg = offer.legs[0]?.segments[0];
-  const bag = (items: OfferAttributes['checkedBaggageItems'], ref?: string) => {
-    const item = items?.find((b) => b.id === ref) ?? (ref ? undefined : items?.[0]);
-    const allowance = item?.allowances?.[0];
-    if (!allowance) return undefined;
-    return {
-      pieces: allowance.numberOfPieces,
-      weightKg: allowance.bagDefinition?.weightInKilograms ?? allowance.maximumWeightInKilograms,
-      description: allowance.bagDefinition?.description?.[0],
-    };
-  };
-  const rule = (items: OfferAttributes['refundabilityItems'], ref?: string) => {
-    const item = items?.find((r) => r.id === ref);
-    return item ? { before: item.beforeDeparture, after: item.afterDeparture } : undefined;
-  };
-  return {
-    checkedBags: bag(attributes.checkedBaggageItems, firstSeg?.checkedBaggageRef),
-    carryOn: bag(attributes.carryOnBaggageItems, firstSeg?.carryOnBaggageRef),
-    refund: rule(attributes.refundabilityItems, offer.refundabilityRef),
-    change: rule(attributes.changeItems, offer.changeRef),
   };
 }
 

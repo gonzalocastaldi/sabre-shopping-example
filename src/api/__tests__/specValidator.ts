@@ -8,7 +8,7 @@ import Ajv, { type ErrorObject } from 'ajv';
 import addFormats from 'ajv-formats';
 import YAML from 'yaml';
 
-type SpecName = 'flightsearch' | 'flightshop' | 'flightcheck' | 'flightrefresh' | 'flightreshop';
+type SpecName = 'flightsearch' | 'flightrefresh';
 
 function adapt(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(adapt);

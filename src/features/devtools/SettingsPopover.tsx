@@ -26,11 +26,10 @@ export function ConnectionBadge() {
   const proxyPcc = meta.data?.pcc ?? undefined;
   const effectivePcc = settings.pcc || proxyPcc;
   /**
-   * Flight Check exige pseudoCityCode: sin él responde HTTP 200 con solo "timestamp",
-   * sin errors ni warnings, y la pantalla de revisión queda vacía sin explicación.
-   * "A successful call includes itinerary details in the request, along with other
-   * mandatory data such as the passenger type code and pseudoCityCode."
-   * https://developer.sabre.com/rest-api/flightcheck-api/v1/index.html
+   * Flight Refresh exige pseudoCityCode: "include the itinerary details in the Flight Refresh
+   * request, along with the other required data elements (passengerTypeCode and
+   * pseudoCityCode)". Sin PCC la validación del mapa no puede correr.
+   * https://developer.sabre.com/rest-api/flightrefresh-api/v1/index.html
    */
   const pccIssue = !live || !meta.data ? undefined : !effectivePcc ? 'missing' : settings.pcc && proxyPcc && settings.pcc !== proxyPcc ? 'override' : undefined;
   const healthy = live && !missingToken && !proxyDown && !pccIssue;
@@ -94,11 +93,11 @@ export function ConnectionBadge() {
                     <span className="text-ink-soft">{settings.pcc ? ' (de Ajustes)' : proxyPcc ? ' (heredado del proxy)' : ''}</span>
                   </p>
                   {pccIssue === 'missing' && (
-                    <p className="mt-1 text-danger">Sin PCC, Flight Check responde vacío y sin error. Cargá SABRE_REQUEST_PCC en .env.local o escribí uno acá abajo.</p>
+                    <p className="mt-1 text-danger">Sin PCC no se puede validar con Flight Refresh. Cargá SABRE_REQUEST_PCC en .env.local o escribí uno acá abajo.</p>
                   )}
                   {pccIssue === 'override' && (
                     <p className="mt-1 text-warn">
-                      Estás pisando el PCC del proxy (<span translate="no">{proxyPcc}</span>) con <span translate="no">{settings.pcc}</span>. Si Flight Check no devuelve ofertas, volvé a{' '}
+                      Estás pisando el PCC del proxy (<span translate="no">{proxyPcc}</span>) con <span translate="no">{settings.pcc}</span>. Si Flight Refresh responde vacío, volvé a{' '}
                       <span translate="no">{proxyPcc}</span>.
                     </p>
                   )}
@@ -147,7 +146,7 @@ export function ConnectionBadge() {
                 placeholder={meta.data?.pcc ? `${meta.data.pcc} (heredado del proxy)` : 'Ej.: AB12…'}
                 className="mt-1 h-9 w-full rounded-lg border border-line bg-land px-2 uppercase"
               />
-              <p className="mt-1 text-2xs text-ink-soft">Se envía como customerCode (Search) y pseudoCityCode (Shop, Check y Refresh). Si lo dejás vacío se usa el de SABRE_REQUEST_PCC. Flight Check no devuelve ofertas sin PCC.</p>
+              <p className="mt-1 text-2xs text-ink-soft">Se envía como customerCode (Search) y pseudoCityCode (Refresh, donde es obligatorio). Si lo dejás vacío se usa el de SABRE_REQUEST_PCC.</p>
             </div>
           </div>
           <Popover.Arrow className="fill-land" />

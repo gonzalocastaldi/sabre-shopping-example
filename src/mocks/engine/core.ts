@@ -154,19 +154,6 @@ export function carriersFor(from: string, to: string): Carrier[] {
 /** ¿El carrier tiene que conectar sí o sí? Si el desvío es grande, vuela directo. */
 export const mustFlyDirect = (carrier: Carrier, from: string, to: string) => detour(carrier, from, to) >= 1.35;
 
-// ---------- Memoria de precios (coherencia Search/Shop → Check) ----------
-
-/**
- * El mock de Check recibe solo vuelos y clases (como la API real), sin precio. Para que la
- * revalidación sea coherente con lo que se mostró, Search y Shop registran acá el precio
- * base (tarifa Light por adulto, USD) de cada itinerario generado.
- */
-const priceMemory = new Map<string, number>();
-export const flightsSignature = (flights: { marketingAirlineCode: string; marketingFlightNumber: number; departureDate: string }[]) =>
-  flights.map((f) => `${f.marketingAirlineCode}${f.marketingFlightNumber}${f.departureDate}`).join('|');
-export const rememberPrice = (signature: string, lightUsd: number) => priceMemory.set(signature, lightUsd);
-export const recallPrice = (signature: string) => priceMemory.get(signature);
-
 // ---------- Precios ----------
 
 const dayOfYear = (iso: string) => {

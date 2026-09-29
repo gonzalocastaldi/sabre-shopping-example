@@ -1,7 +1,11 @@
 # Galaxy Travel — OTA de demo para las APIs de shopping de Sabre
 
 ## Propósito
-OTA de ejemplo (solo frontend, React) para presentar a clientes las APIs de **shopping inspiracional** de Sabre Mosaic: Flight Search, Flight Refresh, Flight Shop, Flight Check y Flight Reshop. El foco es **Flight Search**: open date, open destination/origin, calendario de tarifas y mapa.
+OTA de ejemplo (solo frontend, React) para presentar a clientes las APIs de **shopping inspiracional** de Sabre Mosaic. **Alcance actual: solo Flight Search y Flight Refresh.**
+- **Flight Search**: open date, open destination/origin, calendario de tarifas y mapa.
+- **Flight Refresh**: se prueba desde el mapa. Al tocar un pin se abre una tarjeta con la oferta en caché y el botón "Validar con Flight Refresh".
+- La pantalla principal es solo la barra de búsqueda y el mapa, sin paneles laterales.
+- Flight Shop, Flight Check y Flight Reshop se sacaron de la demo; el código quedó en el historial de git (commit `9e548b2`). Volver a sumarlos requiere consultarlo antes.
 
 ## Entorno: PROD, SOLO SHOPPING
 - Se trabaja contra **PROD** (`https://api.platform.sabre.com`) porque la caché de CERT tiene muy pocos city pairs.
@@ -9,9 +13,6 @@ OTA de ejemplo (solo frontend, React) para presentar a clientes las APIs de **sh
 - Endpoints permitidos (el proxy `server/sabreProxy.ts` aplica esta allowlist; todo lo demás responde 403 sin llegar a Sabre):
   - `POST /v1/offers/flightSearch`
   - `POST /v1/offers/flightRefresh`
-  - `POST /v1/offers/flightShop`
-  - `POST /v1/offers/flightCheck`
-  - `POST /v1/offers/flightReshop`
   - `GET /v2/geo/autocomplete`
   - `POST /v2/auth/token` (solo desde el proxy, para generar el token)
 - Si una tarea requiere un endpoint fuera de esta lista, frená y consultá antes de agregarlo.
@@ -36,18 +37,21 @@ Citá la doc usada en PRs y comentarios relevantes (`https://developer.sabre.com
 | Token (solo proxy) | OAuth Token Create v2 | `rest-api/oauth-token-create-rest-api/v2` | — |
 | Inspiración (mapa, destinos, calendario) | Flight Search v1 | `rest-api/flightsearch-api/v1` | `specs/flightsearch.yml` |
 | Validar ofertas cacheadas (batch ≤ 100) | Flight Refresh v1 | `rest-api/flightrefresh-api/v1` | `specs/flightrefresh.yml` |
-| Shopping en vivo | Flight Shop v1 (spec 1.5) | `rest-api/flightshop-api/v1` | `specs/flightshop.yml` |
-| Revalidar la oferta elegida | Flight Check v1 | `rest-api/flightcheck-api/v1` | `specs/flightcheck.yml` |
-| Cambios sobre PNR/ticket existente (solo búsqueda) | Flight Reshop 1.0 (spec 1.1, beta) | `rest-api/flight-reshop-api/1.0` | `specs/flightreshop.yml` |
 | Autocompletar aeropuertos | Geo Autocomplete v2 | `rest-api/geo-autocomplete/v2` | `specs/geo-autocomplete.yml` |
 
 Los tipos de `src/api/types/*.ts` se generan con `npm run gen:types`; no se editan a mano (salvo `geo.ts`, que es Swagger 2.0).
+
+### Reglas de Flight Refresh (fuente: https://developer.sabre.com/rest-api/flightrefresh-api/v1)
+- **`pseudoCityCode` es obligatorio** ("required data elements (`passengerTypeCode` and `pseudoCityCode`)"). `buildRefreshRequests` falla antes de llamar si no hay PCC (`SABRE_REQUEST_PCC` o Ajustes). Flight Check sin PCC respondía HTTP 200 con solo `timestamp`, así que `useFlightRefresh` trata como error una respuesta sin itinerarios ni errores.
+- **Las fechas tienen que coincidir.** La `departureDate` de cada `journeys[i]` del request tiene que ser la del primer vuelo de `itineraries[*].journeys[i]`. Si no, Sabre responde `Flight and requested journey departure dates must match.` Por eso los itinerarios se agrupan por ruta y fechas: un request por grupo, con hasta 100 itinerarios.
+- Sin `bookingClassCode` por vuelo, solo se puede obtener `Any other` o `None`. Explorar pide `returnFullOffers: true` para que cada pin traiga vuelos y clase tarifaria.
+- El mock (`src/mocks/engine/other.ts`) replica estas dos validaciones: si una falla en vivo, tiene que fallar también en los tests.
 
 ## Credenciales y datos sensibles
 - El token va en `.env.local` como `SABRE_TOKEN` (sin prefijo `VITE_`, así nunca llega al bundle). Opcional: `SABRE_EPR`, `SABRE_PCC`, `SABRE_DOMAIN`, `SABRE_PASSWORD` para que el proxy genere el token solo.
 - Nunca commitear `.env*` (salvo `.env.example`), tokens ni respuestas con datos personales.
 - No loguear tokens, bodies de requests, PNR, números de ticket ni datos de pasajeros. El proxy solo loguea método, path, status y latencia.
-- Las grabaciones (`SABRE_RECORD=1`) nunca incluyen Reshop.
+- Las grabaciones (`SABRE_RECORD=1`) solo guardan Flight Search, Flight Refresh y Geo Autocomplete, y nunca incluirían Reshop si volviera.
 - Cuidar el volumen de transacciones en PROD: búsquedas solo con acción explícita del usuario (nada de buscar mientras se escribe) y caché de TanStack Query.
 
 ## Stack y comandos
