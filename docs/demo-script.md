@@ -16,7 +16,7 @@ Objetivo: mostrar cómo una OTA puede **inspirar** con la caché de Sabre (Fligh
 - Enlace directo: [/?o=BUE](http://localhost:5173/?o=BUE)
 
 ## 2. Inspiración con criterios del viajero
-- En "A dónde", elegí **Inspirate → Playa** y **Esquí**, excluí un país y buscá.
+- En "A dónde", elegí **Tema → Playa** y **Esquí**, excluí un país y buscá.
   - **Mostrar:** `arrivalLocations` con `Theme` y `Exclude`.
 - En "Opciones", poné un **presupuesto máximo** y activá **la tarifa directa más baja**.
   - **Mostrar:** `processingOptions.budget` y `returnLowestNonStopFare`. En la tarjeta del destino aparece el selector "Más barata / Directa más barata".

@@ -163,7 +163,7 @@ function DestinationPanel({ c, set }: { c: SearchCriteria; set: (p: Partial<Sear
         { value: 'place', label: 'Ciudad' },
         { value: 'country', label: 'País' },
         { value: 'region', label: 'Región' },
-        { value: 'theme', label: 'Inspirate' },
+        { value: 'theme', label: 'Tema' },
       ];
   const toggle = (code: string, max: number) =>
     set({ destinations: c.destinations.includes(code) ? c.destinations.filter((d) => d !== code) : [...c.destinations, code].slice(0, max) });
