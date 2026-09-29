@@ -86,7 +86,9 @@ function MapStatus({ criteria, query, onMock }: { criteria?: SearchCriteria; que
     <div className="flex flex-col items-start gap-2">
       <p className="inline-flex flex-wrap items-center gap-x-2 rounded-2xl bg-land/95 py-1 pl-3 pr-1 text-sm shadow-sm">
         <span className="font-medium">
-          {open ? `${places.length} orígenes hacia ${placeLabel(criteria.destinations[0] ?? '')}` : `${places.length} destinos en caché`}
+          {open
+            ? `${places.length} ${places.length === 1 ? 'origen' : 'orígenes'} hacia ${placeLabel(criteria.destinations[0] ?? '')}`
+            : `${places.length} ${places.length === 1 ? 'destino' : 'destinos'} en caché`}
         </span>
         <ApiSourceTag api="flightSearch">vía</ApiSourceTag>
       </p>

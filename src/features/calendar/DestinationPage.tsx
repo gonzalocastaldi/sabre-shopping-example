@@ -2,7 +2,7 @@
  * Destino: calendario de tarifas (Flight Search "Per Day" con ofertas completas), franja de
  * 12 meses (Flight Search "Per Month", solo precio). Flight Refresh se prueba desde el mapa.
  */
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link, useCanGoBack, useNavigate, useRouter } from '@tanstack/react-router';
 import { addMonths, format, startOfMonth } from 'date-fns';
 import { useMemo, useState } from 'react';
 import { describeError } from '@/api/client';
@@ -12,6 +12,7 @@ import type { CalendarDay } from '@/api/normalize';
 import { destinationRoute } from '@/app/router';
 import { countryName, getPlace, placeLabel } from '@/data/geo';
 import { ApiSourceTag } from '@/features/devtools/ApiSourceTag';
+import { RefreshBox } from '@/features/shared/RefreshBox';
 import { LegLine, RouteTitle } from '@/features/shared/travel';
 import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
 import { IconButton, Notice, Price, ToggleChip, cx, formatDate, formatDateLong, formatDays, formatMoney } from '@/ui/primitives';
@@ -34,6 +35,37 @@ export function DestinationPage() {
   // Sin origen no hay default: no se llama a Flight Search y se explica cómo seguir.
   if (!search.o) return <MissingOrigin code={code} />;
   return <DestinationCalendar origin={search.o} />;
+}
+
+/**
+ * Vuelta al mapa. Si se llegó desde la tarjeta del mapa, vuelve atrás en el historial: misma
+ * búsqueda, tarjeta abierta y sin gastar otra búsqueda (queda en caché). Dentro del calendario
+ * todas las navegaciones reemplazan la entrada, así que "atrás" siempre es el mapa. Si se entró
+ * por link directo, abre el mapa desde ese origen.
+ */
+function BackToMap({ origin }: { origin: string }) {
+  const router = useRouter();
+  const canGoBack = useCanGoBack();
+  const className = 'inline-flex items-center gap-1 rounded-md py-1 pr-2 text-sm text-ink-soft hover:text-ink hover:underline';
+  const content = (
+    <>
+      <IconChevronLeft size={16} />
+      Volver al mapa
+    </>
+  );
+  return (
+    <nav aria-label="Navegación">
+      {canGoBack ? (
+        <button type="button" onClick={() => router.history.back()} className={className}>
+          {content}
+        </button>
+      ) : (
+        <Link to="/" search={{ o: origin }} className={className}>
+          {content}
+        </Link>
+      )}
+    </nav>
+  );
 }
 
 function MissingOrigin({ code }: { code: string }) {
@@ -101,11 +133,7 @@ function DestinationCalendar({ origin }: { origin: string }) {
 
   return (
     <div className="mx-auto w-full max-w-[1440px] px-4 py-5 sm:px-6">
-      <nav aria-label="Migas" className="text-sm text-ink-soft">
-        <Link to="/" search={{ o: origin }} className="hover:text-ink hover:underline">
-          Explorar desde {placeLabel(origin)}
-        </Link>
-      </nav>
+      <BackToMap origin={origin} />
       <div className="mt-2 flex flex-wrap items-end gap-x-6 gap-y-3">
         <div className="min-w-0">
           <h1 className="text-[36px] sm:text-[44px]">
@@ -211,7 +239,7 @@ function DestinationCalendar({ origin }: { origin: string }) {
             monthsShown={monthsShown}
             days={days}
             selected={selectedDate}
-            onSelect={(date) => set({ sel: date }, false)}
+            onSelect={(date) => set({ sel: date })}
             onNavigate={(m) => set({ m })}
             minDate={minDate}
             maxDate={maxDate}
@@ -251,11 +279,9 @@ function DestinationCalendar({ origin }: { origin: string }) {
                   {offer.legs.map((leg, i) => (
                     <LegLine key={leg.journeyId} leg={leg} label={i === 0 ? 'Ida' : 'Vuelta'} />
                   ))}
-                  {offer.priceOnly && <p className="text-sm text-ink-soft">Esta tarifa vino sin detalle de vuelos.</p>}
                 </div>
-                <p className="mt-5 text-2xs text-ink-soft">
-                  Para validar disponibilidad con Flight Refresh, volvé al mapa y tocá el destino.
-                </p>
+                {/* Flight Refresh de la tarifa de ese día, sin volver al mapa. */}
+                <RefreshBox offer={offer} className="mt-5" />
               </>
             )}
           </div>

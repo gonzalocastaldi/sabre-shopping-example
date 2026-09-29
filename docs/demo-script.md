@@ -47,6 +47,8 @@ Objetivo: mostrar cómo una OTA puede **inspirar** con la caché de Sabre (Fligh
 - **Calendario:** Flight Search con `Per Day` y `returnFullOffers: true`, un precio por día con heatmap.
   - Mové el selector de **duración del viaje** (1 a 21 días, lo que acepta `lengthsOfStay`): al soltarlo cambia el `lengthsOfStay` y el calendario se vuelve a pedir.
   - El calendario se recorre con las flechas del teclado.
+- **Elegí un día y validalo con Flight Refresh** desde el panel de la derecha, igual que en la tarjeta del mapa (mismo request, mismo resultado).
+- **"Volver al mapa"** (arriba a la izquierda) vuelve a la búsqueda anterior con la tarjeta abierta, sin volver a buscar.
 
 ## Cierre
 - Recorrido: Search para inspirar (mapa, temas, open origin, calendario) y Refresh para validar la tarifa de caché contra el inventario, **sin reservar**.

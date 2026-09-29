@@ -10,8 +10,21 @@ import { cx, formatMoney, formatMonth } from '@/ui/primitives';
 const WEEKDAYS = Array.from({ length: 7 }, (_, i) => new Intl.DateTimeFormat('es', { weekday: 'narrow' }).format(new Date(2024, 0, 1 + i)));
 const WEEKDAYS_LONG = Array.from({ length: 7 }, (_, i) => new Intl.DateTimeFormat('es', { weekday: 'long' }).format(new Date(2024, 0, 1 + i)));
 const iso = (d: Date) => format(d, 'yyyy-MM-dd');
-/** En las celdas va solo el número (la moneda se indica una vez, arriba del calendario). */
-const formatAmount = (n: number) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(n);
+/**
+ * Precio de la celda con el símbolo corto de la moneda ("$ 1.782", "€ 890", "R$ 2.100"). El código
+ * completo (USD) se indica una vez arriba del calendario y en el aria-label de cada día.
+ */
+function cellAmount(amount: number, currency: string) {
+  try {
+    const parts = new Intl.NumberFormat('es-AR', { style: 'currency', currency, currencyDisplay: 'narrowSymbol', maximumFractionDigits: 0 }).formatToParts(amount);
+    return {
+      symbol: parts.find((p) => p.type === 'currency')?.value ?? '',
+      number: parts.filter((p) => p.type === 'integer' || p.type === 'group').map((p) => p.value).join(''),
+    };
+  } catch {
+    return { symbol: currency, number: String(Math.round(amount)) };
+  }
+}
 
 /** 5 escalones por cuantil: el más barato con el color más intenso. */
 export function priceBuckets(days: Map<string, CalendarDay>) {
@@ -95,6 +108,7 @@ export function FareCalendar({ firstMonth, monthsShown, days, selected, onSelect
                     const info = days.get(date);
                     if (!inMonth) return <div key={date} role="gridcell" aria-hidden="true" />;
                     const price = info?.cheapest.price;
+                    const shown = price && cellAmount(price.amount, price.currency);
                     const label = price
                       ? `${new Intl.DateTimeFormat('es', { weekday: 'long', day: 'numeric', month: 'long' }).format(day)}: desde ${formatMoney(price.amount, price.currency)}${info.cheapest.isNonStop ? ', directo' : ''}${price.amount === min ? ', el precio más bajo' : ''}`
                       : undefined;
@@ -115,7 +129,10 @@ export function FareCalendar({ firstMonth, monthsShown, days, selected, onSelect
                             )}
                           >
                             <span className="text-2xs leading-none opacity-80 tabular">{day.getDate()}</span>
-                            <span className="mt-1 font-display text-[14px] font-semibold leading-none tabular sm:text-[16px]">{formatAmount(price.amount)}</span>
+                            <span className="mt-1 whitespace-nowrap font-display text-[14px] font-semibold leading-none tabular sm:text-[16px]">
+                              <span className="mr-px text-[0.75em] font-medium">{shown?.symbol}</span>
+                              {shown?.number}
+                            </span>
                             {price.amount === min && <span className="absolute inset-x-2 bottom-1 h-0.5 rounded-full bg-magenta" aria-hidden="true" />}
                           </button>
                         ) : (
